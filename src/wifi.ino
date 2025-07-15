@@ -3,10 +3,8 @@
 #include <WebSocketsServer.h>
 #include <ArduinoJson.h> // Библиотека для работы с JSON
 #include <ESP8266mDNS.h> // Библиотека для mDNS
+#include <WiFiManager.h> // Добавлена библиотека WiFiManager
 
-// Данные вашей Wi-Fi сети, к которой ESP8266 будет подключаться
-const char* sta_ssid = "IoT_Office";         // <--- !!! ОБЯЗАТЕЛЬНО ИЗМЕНИТЕ ЭТО !!!
-const char* sta_password = "9514210798"; // <--- !!! ОБЯЗАТЕЛЬНО ИЗМЕНИТЕ ЭТО !!!
 
 // Имя хоста для mDNS (например, http://espwebasto.local в браузере)
 const char* mdns_hostname = "espwebasto";
@@ -86,27 +84,44 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
             display: inline-flex;
             align-items: center;
             justify-content: center;
+            /* Добавлены стили для объемности и эффекта нажатия */
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.15);
+            transform: translateY(0);
+            border: none; /* Убедимся, что нет стандартных границ */
+        }
+        .btn:hover {
+            box-shadow: 0 6px 10px rgba(0, 0, 0, 0.4), 0 2px 5px rgba(0, 0, 0, 0.2);
+        }
+        .btn:active {
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 1px 1px rgba(0, 0, 0, 0.1);
+            transform: translateY(2px);
         }
         .btn-primary {
             background-color: #4299e1; /* Синий */
+            background-image: linear-gradient(to bottom right, #4299e1, #3182ce); /* Градиент для объемности */
             color: white;
         }
         .btn-primary:hover {
             background-color: #3182ce;
+            background-image: linear-gradient(to bottom right, #3182ce, #2c5282);
         }
         .btn-danger {
             background-color: #e53e3e; /* Красный */
+            background-image: linear-gradient(to bottom right, #e53e3e, #c53030); /* Градиент для объемности */
             color: white;
         }
         .btn-danger:hover {
             background-color: #c53030;
+            background-image: linear-gradient(to bottom right, #c53030, #9b2c2c);
         }
         .btn-secondary {
             background-color: #4a5568; /* Серый */
+            background-image: linear-gradient(to bottom right, #4a5568, #2d3748); /* Градиент для объемности */
             color: white;
         }
         .btn-secondary:hover {
             background-color: #2d3748;
+            background-image: linear-gradient(to bottom right, #2d3748, #1a202c);
         }
         .input-field {
             background-color: #4a5568;
@@ -156,6 +171,14 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
         .status-on { background-color: #48bb78; } /* Зеленый */
         .status-off { background-color: #e53e3e; } /* Красный */
         .status-warn { background-color: #ecc94b; } /* Желтый */
+        .glow-icon {
+            width: 24px;
+            height: 24px;
+            vertical-align: middle;
+            margin-left: 8px;
+        }
+        .glow-icon.on { fill: #FFD700; } /* Золотой цвет для включенной свечи */
+        .glow-icon.off { fill: #6B7280; } /* Серый цвет для выключенной свечи */
     </style>
 </head>
 <body class="p-4">
@@ -173,7 +196,12 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
                 <div class="text-lg mb-2">Температура выхлопа: <span id="exhaustTemp" class="font-bold">--</span> &deg;C</div>
                 <div class="text-lg mb-2">Скорость вентилятора: <span id="fanSpeed" class="font-bold">--</span> %</div>
                 <div class="text-lg mb-2">Расход топлива: <span id="fuelRateHz" class="font-bold">--</span> Гц</div>
-                <div class="text-lg mb-2">Время накаливания: <span id="glowTime" class="font-bold">--</span> с</div>
+                <div class="flex items-center text-lg mb-2">
+                    Свеча: 
+                    <svg id="glowPlugIcon" class="glow-icon off" viewBox="0 0 24 24" fill="currentColor" stroke="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 2L9 11H3L13 22L15 13H21L11 2Z" />
+                    </svg>
+                </div>
                 <div class="text-lg mb-2">Режим горения: <span id="burnMode" class="font-bold">--</span></div>
                 <div class="text-lg mb-2">Попытка запуска: <span id="attempt" class="font-bold">--</span></div>
                 <div class="text-lg mb-2">Ошибки: <span id="webastoFail" class="font-bold">Нет</span></div>
@@ -242,23 +270,30 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
             </div>
         </div>
 
+        <!-- Консоль отладки скрыта -->
+        <!--
         <div class="card p-6">
             <h2 class="text-xl font-semibold mb-4">Консоль отладки</h2>
             <div id="debugConsole" class="bg-gray-800 p-3 rounded-md text-sm h-48 overflow-y-scroll break-words">
                 Подключение к устройству...
             </div>
         </div>
+        -->
     </div>
 
     <script>
         var ws;
-        const debugConsole = document.getElementById('debugConsole');
+        // const debugConsole = document.getElementById('debugConsole'); // Закомментировано
 
         function log(message) {
-            const p = document.createElement('p');
-            p.textContent = message;
-            debugConsole.appendChild(p);
-            debugConsole.scrollTop = debugConsole.scrollHeight; // Прокрутка вниз
+            // Если консоль отладки скрыта, логирование происходит только в Serial
+            // if (debugConsole) {
+            //     const p = document.createElement('p');
+            //     p.textContent = message;
+            //     debugConsole.appendChild(p);
+            //     debugConsole.scrollTop = debugConsole.scrollHeight; // Прокрутка вниз
+            // }
+            console.log(message); // Добавлено для логирования в консоль браузера
         }
 
         function connectWebSocket() {
@@ -308,8 +343,20 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
             document.getElementById('fanSpeed').textContent = data.fan_speed !== undefined ? data.fan_speed.toFixed(0) : '--';
             // Обновлено: Расход топлива теперь берется из fuel_rate_hz
             document.getElementById('fuelRateHz').textContent = data.fuel_rate_hz !== undefined ? data.fuel_rate_hz.toFixed(2) : '--';
-            // Обновлено: Время накаливания теперь берется из glow_left
-            document.getElementById('glowTime').textContent = data.glow_time !== undefined ? data.glow_time : '--';
+            
+            // Обновлено: Управление иконкой свечи накаливания
+            const glowPlugIcon = document.getElementById('glowPlugIcon');
+            if (data.debug_glow_plug_on !== undefined) {
+                if (data.debug_glow_plug_on) {
+                    glowPlugIcon.classList.remove('off');
+                    glowPlugIcon.classList.add('on');
+                } else {
+                    glowPlugIcon.classList.remove('on');
+                    glowPlugIcon.classList.add('off');
+                }
+            }
+
+
             document.getElementById('burnMode').textContent = data.burn_mode !== undefined ? data.burn_mode : '--';
             document.getElementById('attempt').textContent = data.attempt !== undefined ? data.attempt : '--';
             document.getElementById('statusMessage').textContent = data.message || 'Неизвестно';
@@ -499,51 +546,93 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
 </html>
 )rawliteral";
 
-void setup_wifi_ap() {
-  // Настройка ESP в режиме станции для подключения к вашей домашней сети
-  WiFi.mode(WIFI_STA); // ИСПРАВЛЕНО: Использовать WIFI_STA вместо WiFi.STA
-  WiFi.begin(sta_ssid, sta_password);
-  Serial.print("Connecting to WiFi ..");
-  int i = 0;
-  while (WiFi.status() != WL_CONNECTED && i < 30) { // Таймаут 30 секунд (30 * 1000мс)
-    Serial.print('.');
-    delay(1000);
-    i++;
-  }
-  Serial.println("");
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.print("Connected to WiFi. IP address: ");
-    Serial.println(WiFi.localIP());
-  } else {
-    Serial.println("Failed to connect to WiFi in setup_wifi_ap.");
-    Serial.println("Please check your SSID and Password, or try again later.");
-    // Не продолжаем инициализацию сервера, если WiFi не подключен
-    return;
-  }
+// Функция для инициализации Wi-Fi в режиме клиента
+void setup_wifi_station() {
+  Serial.println();
+  Serial.println("DEBUG: === Starting WiFi Station setup ===");
+  Serial.flush();
 
+  // Создаем объект WiFiManager
+  WiFiManager wifiManager;
 
-  // Запуск mDNS
-  if (MDNS.begin(mdns_hostname)) {
-    Serial.printf("MDNS responder started. You can now access at http://%s.local\n", mdns_hostname);
-  } else {
-    Serial.println("Error setting up MDNS responder!");
-  }
+  // Устанавливаем режим сна Wi-Fi в WIFI_NONE_SLEEP для повышения стабильности
+  WiFi.setSleepMode(WIFI_NONE_SLEEP);
 
-  server.on("/", HTTP_GET, []() {
-    server.send_P(200, "text/html", INDEX_HTML);
+  // Устанавливаем колбэк для портала конфигурации (чтобы видеть, когда он активен)
+  wifiManager.setAPCallback([](WiFiManager *myWiFiManager) {
+    Serial.println("DEBUG: Entered WiFi setup portal mode.");
+    Serial.print("DEBUG: Connect to AP: ");
+    Serial.println(myWiFiManager->getConfigPortalSSID());
+    Serial.print("DEBUG: IP address: ");
+    Serial.println(WiFi.softAPIP());
+    Serial.flush();
   });
 
-  server.begin();
-  Serial.println("HTTP server started");
+  // autoConnect() будет пытаться подключиться к сохраненным учетным данным.
+  // Если не удастся, он запустит Captive Portal.
+  // Имя AP для Captive Portal будет "AutoConnectAP" или указанное вами.
+  // В данном случае, мы хотим использовать mdns_hostname как имя AP для удобства.
+  // Если autoConnect() возвращает false, это значит, что портал был запущен,
+  // но пользователь не настроил Wi-Fi или произошла ошибка.
+  if (!wifiManager.autoConnect(mdns_hostname)) { // Используем mdns_hostname как SSID для AP
+    Serial.println("ERROR: Failed to connect to WiFi or configure via portal. Continuing without network services.");
+    Serial.flush();
+    // Здесь функция просто завершается, позволяя setup() и loop() продолжить работу.
+    // Веб-сервер и WebSocket не будут запущены.
+    return; 
+  }
 
+  // Если мы дошли сюда, значит, подключение к Wi-Fi успешно или пользователь настроил его.
+  Serial.println("\nDEBUG: WiFi connected successfully.");
+  Serial.print("DEBUG: IP address: ");
+  Serial.println(WiFi.localIP());
+  Serial.flush();
+
+  // Инициализация mDNS
+  if (MDNS.begin(mdns_hostname)) {
+    Serial.print("DEBUG: mDNS responder started. Access at http://");
+    Serial.print(mdns_hostname);
+    Serial.println(".local/");
+    Serial.flush();
+  } else {
+    Serial.println("ERROR: mDNS setup failed!");
+    Serial.flush();
+  }
+
+  Serial.println("DEBUG: Setting up HTTP server route for '/'..."); 
+  Serial.flush();
+  // Обработчик корневого URL
+  server.on("/", HTTP_GET, []() {
+    server.send_P(200, "text/html", INDEX_HTML); // Использование send_P с PROGMEM
+    Serial.println("DEBUG: HTTP request for '/' received and page sent.");
+    Serial.flush();
+  });
+  Serial.println("DEBUG: HTTP server route for '/' configured."); 
+  Serial.flush();
+
+  Serial.println("DEBUG: Starting HTTP server...");
+  Serial.flush();
+  server.begin();
+  Serial.println("DEBUG: HTTP server started.");
+  Serial.flush();
+
+  Serial.println("DEBUG: Starting WebSocket server...");
+  Serial.flush();
   webSocket.begin();
-  webSocket.onEvent(webSocketEvent); // Регистрация обработчика событий WebSocket
-  Serial.println("WebSocket server started");
+  webSocket.onEvent(webSocketEvent);
+  Serial.println("DEBUG: WebSocket server started.");
+  Serial.println("DEBUG: === WiFi Station setup complete ===");
+  Serial.flush();
 }
 
+// Функция для обработки клиентов Wi-Fi и WebSocket
 void handle_wifi_clients() {
-  server.handleClient();
-  webSocket.loop(); // Обработка событий WebSocket
+  // Проверяем, подключен ли Wi-Fi, прежде чем пытаться обрабатывать клиентов
+  if (WiFi.status() == WL_CONNECTED) {
+    server.handleClient();
+    webSocket.loop(); // ОЧЕНЬ ВАЖНО: Вызывать webSocket.loop() как можно чаще в loop()
+    MDNS.update(); // Обязательно вызывайте в loop() для работы mDNS
+  }
 }
 
 void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length) {
@@ -567,7 +656,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
         sendCurrentSettings();
       } else if (strcmp((char*)payload, "RESET_SETTINGS") == 0) {
         // Вызов функции сброса настроек из low_smoke.ino
-        resetToDefaultSettings(); // Эта функция должна быть объявлена extern
+        resetToDefaultSettings(); 
         sendCurrentSettings(); // Отправляем обновленные настройки
       } else if (strncmp((char*)payload, "SET:", 4) == 0) {
         char cleanedCommand[256]; // Достаточно большой буфер
@@ -575,18 +664,17 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
         cleanedCommand[sizeof(cleanedCommand) - 1] = '\0'; // Гарантируем нулевой терминатор
 
         // При вызове из WebSocket, is_from_websocket = true
-        handleSettingsUpdate(cleanedCommand + 4, true); // ОБНОВЛЕНО: Передаем true
-      } else if (strcmp((char*)payload, "UP") == 0) { // НОВОЕ: Обработка команды UP
+        handleSettingsUpdate(cleanedCommand + 4, true); 
+      } else if (strcmp((char*)payload, "UP") == 0) { 
         handleUpCommand();
-      } else if (strcmp((char*)payload, "DOWN") == 0) { // НОВОЕ: Обработка команды DOWN
+      } else if (strcmp((char*)payload, "DOWN") == 0) { 
         handleDownCommand();
-      } else if (strcmp((char*)payload, "ENTER") == 0) { // НОВОЕ: Обработка команды ENTER
+      } else if (strcmp((char*)payload, "ENTER") == 0) { 
         handleEnterCommand();
-      } else if (strcmp((char*)payload, "FP") == 0) { // НОВОЕ: Обработка команды FP
+      } else if (strcmp((char*)payload, "FP") == 0) { 
         handleFuelPumpingCommand();
-      } else if (strcmp((char*)payload, "CF") == 0) { // НОВОЕ: Обработка команды CF
+      } else if (strcmp((char*)payload, "CF") == 0) { 
         webasto_fail = false; // Сброс флага ошибки
-        // Дополнительно можно отправить статус обратно клиенту, если нужно
       }
       break;
     case WStype_BIN:
@@ -595,114 +683,19 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
     case WStype_FRAGMENT_BIN_START:
     case WStype_FRAGMENT:
     case WStype_FRAGMENT_FIN:
-    case WStype_PING: // Добавлены для обработки всех возможных типов
-    case WStype_PONG: // Добавлены для обработки всех возможных типов
-      // Эти типы событий не требуют специальной обработки в данном приложении
-      // и не содержат данных, которые нужно парсить как команды.
+    case WStype_PING: 
+    case WStype_PONG: 
       break;
     default:
-      // Обработка любых других неожиданных типов WebSocket событий
       Serial.printf("[%u] Unhandled WebSocket Event Type: %d\n", num, type);
       break;
   }
 }
 
-// Функция для инициализации Wi-Fi в режиме клиента
-// Переименована с setup_wifi_ap на setup_wifi_station
-void setup_wifi_station() {
-  Serial.println();
-  Serial.println("DEBUG: === Starting WiFi Station setup ===");
-  Serial.flush();
-
-  Serial.print("DEBUG: Connecting to WiFi network: ");
-  Serial.println(sta_ssid);
-  Serial.flush();
-
-  WiFi.mode(WIFI_STA); // Устанавливаем режим клиента (Station Mode)
-  // !!! Добавлено: Отключение режима сна Wi-Fi для повышения стабильности
-  WiFi.setSleepMode(WIFI_NONE_SLEEP);
-  WiFi.begin(sta_ssid, sta_password); // Начинаем подключение к Wi-Fi сети
-
-  // Ждем подключения к Wi-Fi (неблокирующим способом)
-  int connection_attempts = 0;
-  unsigned long start_time = millis();
-  const unsigned long timeout_ms = 15000; // Таймаут 15 секунд для подключения
-
-  while (WiFi.status() != WL_CONNECTED && (millis() - start_time < timeout_ms)) {
-    delay(500); // Небольшая задержка, чтобы не нагружать процессор
-    Serial.print(".");
-    Serial.flush();
-    connection_attempts++;
-  }
-
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\nDEBUG: WiFi connected successfully.");
-    Serial.print("DEBUG: IP address: ");
-    Serial.println(WiFi.localIP());
-    Serial.flush();
-
-    // Инициализация mDNS
-    if (MDNS.begin(mdns_hostname)) {
-      Serial.print("DEBUG: mDNS responder started. Access at http://");
-      Serial.print(mdns_hostname);
-      Serial.println(".local/");
-      Serial.flush();
-    } else {
-      Serial.println("ERROR: mDNS setup failed!");
-      Serial.flush();
-    }
-
-    Serial.println("DEBUG: Setting up HTTP server route for '/'..."); // Добавлено
-    Serial.flush();
-    // Обработчик корневого URL
-    server.on("/", HTTP_GET, []() {
-      server.send_P(200, "text/html", INDEX_HTML); // Использование send_P с PROGMEM
-      Serial.println("DEBUG: HTTP request for '/' received and page sent.");
-      Serial.flush();
-    });
-    Serial.println("DEBUG: HTTP server route for '/' configured."); // Добавлено
-    Serial.flush();
-
-    Serial.println("DEBUG: Starting HTTP server...");
-    Serial.flush();
-    server.begin();
-    Serial.println("DEBUG: HTTP server started.");
-    Serial.flush();
-
-    Serial.println("DEBUG: Starting WebSocket server...");
-    Serial.flush();
-    webSocket.begin();
-    // !!! УДАЛЕНО: Установка дополнительных заголовков для WebSocket, так как это вызывает ошибку компиляции
-    // webSocket.setExtraHeaders("Connection: upgrade"); 
-    webSocket.onEvent(webSocketEvent);
-    Serial.println("DEBUG: WebSocket server started.");
-    Serial.println("DEBUG: === WiFi Station setup complete ===");
-    Serial.flush();
-  } else {
-    Serial.println("\nERROR: Failed to connect to WiFi. Continuing without network services.");
-    Serial.println("Please check your SSID and Password, or try again later.");
-    Serial.flush();
-    // Здесь функция просто завершается, позволяя setup() и loop() продолжить работу.
-    // Веб-сервер и WebSocket не будут запущены.
-  }
-}
-
-// Функция для обработки клиентов Wi-Fi и WebSocket
-/*
-void handle_wifi_clients() {
-  // Проверяем, подключен ли Wi-Fi, прежде чем пытаться обрабатывать клиентов
-  if (WiFi.status() == WL_CONNECTED) {
-    server.handleClient();
-    webSocket.loop(); // !!! ОЧЕНЬ ВАЖНО: Вызывать webSocket.loop() как можно чаще в loop()
-    MDNS.update(); // Обязательно вызывайте в loop() для работы mDNS
-  }
-}
-*/
-
 // Функция для отправки данных о состоянии по WebSocket
 void send_status_update() {
   if (wsConnected) {
-    StaticJsonDocument<256> doc; // Уменьшен размер, так как теперь только статус
+    StaticJsonDocument<256> doc; 
 
     // Расчет "Расход топлива" (fuel_rate_hz)
     float calculated_fuel_rate_hz = 0.0;
@@ -713,9 +706,8 @@ void send_status_update() {
     // Отправка данных о состоянии (на корневом уровне JSON)
     doc["exhaust_temp"] = exhaust_temp;
     doc["fan_speed"] = fan_speed;
-    doc["fuel_rate_hz"] = calculated_fuel_rate_hz; // Обновлено: отправляем рассчитанное значение
-    doc["glow_time"] = glow_time; // Оставляем glow_time для отладки, если нужно
-    // doc["glow_left"] = glow_left; // Обновлено: отправляем glow_left для отображения оставшегося времени
+    doc["fuel_rate_hz"] = calculated_fuel_rate_hz; 
+    doc["glow_time"] = glow_time; 
     doc["burn_mode"] = burn_mode;
     doc["webasto_fail"] = webasto_fail;
     doc["debug_glow_plug_on"] = debug_glow_plug_on;
@@ -739,7 +731,7 @@ void send_status_update() {
 // Эта функция будет вызываться из основного кода, но фактически отправлять данные через WebSocket
 void sendCurrentSettings() {
   if (wsConnected) {
-    StaticJsonDocument<256> doc; // Достаточно для настроек
+    StaticJsonDocument<256> doc; 
 
     // Важно: настройки отправляются внутри объекта "settings"
     doc["settings"]["pump_size"] = settings.pump_size;

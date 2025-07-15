@@ -1,9 +1,21 @@
-// Глобальная переменная для максимальной яркости свечи накаливания (примерно 45% от 255)
-unsigned long glow_brightness_max = 115; // Изменено на unsigned long
+// Глобальная переменная для максимальной яркости свечи накаливания.
+// Это extern переменная, ее значение должно быть установлено из настроек (settings.glow_brightness)
+// в основном файле программы (например, low_smoke.ino).
+extern unsigned long glow_brightness_max; 
+
 // Глобальная переменная для времени розжига свечи накаливания (в миллисекундах)
-unsigned long glow_fade_in_duration_ms = 10000; // Изменено на unsigned long
+extern unsigned long glow_fade_in_duration_ms; 
 // Глобальная переменная для времени затухания свечи накаливания (в миллисекундах)
-unsigned long glow_fade_out_duration_ms = 5000; // Изменено на unsigned long
+extern unsigned long glow_fade_out_duration_ms; 
+
+// Отладочный флаг для отображения состояния свечи на дисплее (если используется)
+extern bool debug_glow_plug_on;
+
+// Объявление extern для переменной glow_left, если она используется в других файлах
+extern int glow_left;
+
+// Добавлена статическая переменная для отслеживания предыдущего состояния активности свечи
+static bool prev_glow_active_state = false;
 
 
 void glow_plug() {
@@ -15,57 +27,46 @@ void glow_plug() {
     static long timer; // Статическая переменная для хранения времени таймера
     static bool is_fading_out = false; // Флаг для отслеживания процесса плавного выключения
     static unsigned long fade_out_start = 0; // Время начала плавного выключения
+    static unsigned long glow_start_time = 0; // Время начала текущего цикла накала
 
-    if(glow_left < 0)
-        glow_time = 0; // Если оставшееся время накала меньше 0, сбрасываем время накала
-
-    if(last_glow_value != glow_time) {
-        // Если значение времени накала изменилось
-        glow_left = glow_time; // Обновляем оставшееся время накала
-        last_glow_value = glow_time; // Обновляем последнее значение времени накала
-
-        if(glow_time != 0) {
-            timer = millis(); // Если время накала не равно 0, обновляем таймер
-            is_fading_out = false; // Сброс флага плавного выключения при новом цикле накала
-        }
+    // Если оставшееся время накала меньше 0, сбрасываем время накала
+    if(glow_left < 0) {
+        glow_time = 0; 
     }
 
-    if(glow_time == 0)
-        timer = millis(); // Если время накала равно 0, обновляем таймер
+    // Определяем текущее желаемое состояние свечи (включена или выключена)
+    bool current_glow_active_state = (glow_time > 0);
 
-    if(millis() - timer >= 1000) {
-        // Если прошла одна секунда
-        timer = millis(); // Обновляем таймер
-        glow_left -= 1; // Уменьшаем оставшееся время накала на 1 секунду
+    // Обнаружение "восходящего фронта" - свеча только что была активирована
+    if (current_glow_active_state && !prev_glow_active_state) {
+        // Свеча только что перешла из выключенного состояния во включенное
+        glow_start_time = millis(); // Сбрасываем время начала розжига
+        is_fading_out = false;      // Отменяем любой текущий процесс затухания
     }
 
-    if(glow_left > 0) {
-        // Если оставшееся время накала больше 0
-        if(glowing_on == 0)
-            glowing_on = millis(); // Если свеча не горит, запоминаем время начала накала
-
-        // Если свеча горит
-        if (glowing_on != 0) {
-            unsigned long elapsed_time = millis() - glowing_on;
-
-            // Если прошло менее glow_fade_in_duration_ms с момента начала накала
-            if (elapsed_time < glow_fade_in_duration_ms) {
-                // Линейная интерполяция яркости
-                int brightness = map(elapsed_time, 0, glow_fade_in_duration_ms, 0, glow_brightness_max); 
-                analogWrite(glow_plug_pin, brightness); // Постепенно увеличиваем яркость свечи
-            } else {
-                analogWrite(glow_plug_pin, glow_brightness_max); // Устанавливаем максимальную яркость свечи
-            }
+    // Логика плавного включения свечи
+    if (current_glow_active_state) {
+        unsigned long current_time = millis();
+        unsigned long fade_time = current_time - glow_start_time;
+        
+        if (fade_time < glow_fade_in_duration_ms) {
+            // Плавное увеличение яркости в течение glow_fade_in_duration_ms
+            // Используем glow_brightness_max, которое теперь будет загружаться из настроек
+            int brightness = map(fade_time, 0, glow_fade_in_duration_ms, 0, glow_brightness_max);
+            analogWrite(glow_plug_pin, brightness);
+            debug_glow_plug_on = true; // Устанавливаем отладочный флаг
+        } else {
+            // Свеча полностью включена
+            analogWrite(glow_plug_pin, glow_brightness_max); // Используем glow_brightness_max из настроек
+            debug_glow_plug_on = true; // Устанавливаем отладочный флаг, что свеча горит
+            is_fading_out = false; // Сброс флага плавного выключения, так как свеча ещё горит
         }
-        debug_glow_plug_on = 1; // Устанавливаем отладочный флаг, что свеча горит
-        is_fading_out = false; // Сброс флага плавного выключения, так как свеча ещё горит
     } else {
-        // Если оставшееся время накала равно 0
-        if (glowing_on != 0 && !is_fading_out) {
+        // Если свеча должна быть выключена (glow_time == 0)
+        if (debug_glow_plug_on && !is_fading_out) { 
             // Если свеча горела и ещё не начато плавное выключение
             is_fading_out = true;
             fade_out_start = millis();
-            glowing_on = 0; // Сбрасываем время начала накала
         }
 
         if (is_fading_out) {
@@ -73,21 +74,23 @@ void glow_plug() {
             
             if (fade_time < glow_fade_out_duration_ms) {
                 // Плавное уменьшение яркости в течение glow_fade_out_duration_ms
+                // Используем glow_brightness_max, которое теперь будет загружаться из настроек
                 int brightness = map(fade_time, 0, glow_fade_out_duration_ms, glow_brightness_max, 0);
                 analogWrite(glow_plug_pin, brightness);
             } else {
                 // Завершение плавного выключения
                 analogWrite(glow_plug_pin, 0); // Полностью выключаем свечу
-                debug_glow_plug_on = 0; // Сбрасываем отладочный флаг
-                glow_time = 0; // Сбрасываем время накала
+                debug_glow_plug_on = false; // Сбрасываем отладочный флаг
                 is_fading_out = false; // Сбрасываем флаг плавного выключения
             }
         } else {
-            // Если свеча уже выключена
-            analogWrite(glow_plug_pin, 0); // Выключаем свечу
-            debug_glow_plug_on = 0; // Сбрасываем отладочный флаг
-            glow_time = 0; // Сбрасываем время накала
+            // Если свеча должна быть выключена и не находится в процессе затухания
+            analogWrite(glow_plug_pin, 0);
+            debug_glow_plug_on = false;
         }
     }
+
+    // Обновляем предыдущее состояние для следующего цикла
+    prev_glow_active_state = current_glow_active_state;
 }
 
