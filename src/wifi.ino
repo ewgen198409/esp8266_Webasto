@@ -5,6 +5,8 @@
 #include <ESP8266mDNS.h> // Библиотека для mDNS
 #include <WiFiManager.h> // Добавлена библиотека WiFiManager
 
+// Глобальная переменная для управления логированием
+extern bool loggingEnabled;
 
 // Имя хоста для mDNS (например, http://espwebasto.local в браузере)
 const char* mdns_hostname = "espwebasto";
@@ -30,6 +32,11 @@ extern int delayed_period; // Добавлено объявление extern д�
 extern bool fuelPumpingActive; // Добавлено объявление extern для fuelPumpingActive
 
 extern SystemState currentState;
+
+
+// Новые глобальные переменные для учета расхода топлива
+extern float total_fuel_consumed_liters; // Общее количество потребленного топлива в литрах
+extern float fuel_consumption_per_hour;  // Средний расход топлива за 1 час в литрах/час
 
 extern Settings settings;
 
@@ -179,13 +186,97 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
         }
         .glow-icon.on { fill: #FFD700; } /* Золотой цвет для включенной свечи */
         .glow-icon.off { fill: #6B7280; } /* Серый цвет для выключенной свечи */
+
+        /* Стили для вкладок (обновлено для вида "закладок") */
+        .tab-buttons {
+            display: flex;
+            justify-content: flex-start; /* Выравнивание вкладок по левому краю */
+            margin-bottom: -5; /* Убираем отступ, чтобы вкладки прилегали к контенту */
+            overflow-x: auto; /* Добавляем горизонтальную прокрутку */
+            -webkit-overflow-scrolling: touch; /* Для плавности на iOS */
+            scrollbar-width: none; /* Скрыть полосу прокрутки для Firefox */
+            -ms-overflow-style: none;  /* Скрыть полосу прокрутки для IE/Edge */
+        }
+        .tab-buttons::-webkit-scrollbar { /* Скрыть полосу прокрутки для Chrome/Safari */
+            display: none;
+        }
+        .tab-button {
+            flex-shrink: 0; /* Важно, чтобы вкладки не сжимались */
+            padding: 0.4rem 0.8rem; /* Уменьшаем padding для меньшего размера */
+            text-align: center;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out, transform 0.2s ease-in-out; /* Добавляем transition для transform */
+            color: #a0aec0; /* Светло-серый текст для неактивных вкладок */
+            background-color: #222b37; /* Темный фон для неактивных вкладок */
+            border-top-left-radius: 0.4rem; /* Немного меньше радиус для меньших вкладок */
+            border-top-right-radius: 0.4rem; /* Немного меньше радиус для меньших вкладок */
+            border: 1px solid #3a4352; /* Более темная граница для неактивных вкладок */
+            border-bottom: 1px solid #2d3748; /* Нижняя граница неактивной вкладки совпадает с фоном активной области */
+            margin-right: 0.1rem; /* Еще меньший отступ между вкладками */
+            position: relative;
+            z-index: 0; /* Неактивные вкладки находятся сзади */
+            font-size: 0.85rem; /* Немного уменьшаем размер шрифта */
+            transform: translateY(3px); /* Опускаем неактивные вкладки */
+        }
+        .tab-button:hover {
+            background-color: #3182ce; /* Эффект при наведении */
+            color: white;
+            transform: translateY(0); /* Поднимаем при наведении */
+            border-bottom-color: #3182ce; /* Граница при наведении */
+        }
+        .tab-button.active {
+            background-color: #2d3748; /* Фон активной вкладки соответствует фону карточки контента */
+            color: white;
+            border-bottom: none; /* УДАЛЕНО: Чтобы не было никаких видимых границ */
+            z-index: 1; /* Активная вкладка находится сверху */
+            padding-top: 0.5rem; /* Немного больший отступ сверху для активной вкладки */
+            padding-bottom: 0.4rem; /* Сохраняем нижний отступ, чтобы выглядело поднятым */
+            margin-bottom: -1px; /* Убираем margin-bottom для активной вкладки, чтобы она прилегала */
+            transform: translateY(0); /* Активная вкладка не смещена */
+            border-color: #4a5568; /* Стандартная граница для активной вкладки */
+            border-left: 1px solid #4a5568; /* Добавлено для сохранения левой границы */
+            border-right: 1px solid #4a5568; /* Добавлено для сохранения правой границы */
+            border-top: 1px solid #4a5568; /* Добавлено для сохранения верхней границы */
+        }
+        /* Корректировка верхнего отступа карточки контента для выравнивания с вкладками */
+        .tab-content.card {
+            margin-top: -5px; /* Убираем верхний отступ, поднимая контент на 1px */
+            border-top-left-radius: 0.0rem; /* Закругляем верхний левый угол карточки */
+            border-top-right-radius: 0.0rem; /* Закругляем верхний правый угол карточки */
+            border-left: 1px solid #4a5568; /* Добавляем общую границу для карточки */
+            border-right: 1px solid #4a5568;
+            border-bottom: 1px solid #4a5568;
+            border-top: none; /* Явно убираем верхнюю границу */
+        }
+        /* Скрываем все вкладки по умолчанию и добавляем плавный переход */
+        .tab-content {
+            display: none;
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out;
+        }
+        /* Показываем активную вкладку */
+        .tab-content.active {
+            display: block;
+            opacity: 1;
+        }
     </style>
 </head>
 <body class="p-4">
-    <div class="max-w-4xl mx-auto space-y-6">
+    <div class="max-w-3xl mx-auto space-y-6"> <!-- Уменьшен max-width для уменьшения размера страницы -->
         <h1 class="text-3xl font-bold text-center text-blue-400 mb-8">Управление Webasto</h1>
 
-        <div class="card p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <!-- Кнопки вкладок -->
+        <div class="tab-buttons">
+            <div class="tab-button active" onclick="openTab(event, 'controlStatus')">Управление и статус</div>
+            <div class="tab-button" onclick="openTab(event, 'settings')">Настройки</div>
+            <div class="tab-button" onclick="openTab(event, 'log')">Лог</div>
+            <div class="tab-button" onclick="openTab(event, 'wifiSettings')">Wi-Fi</div>
+            <div class="tab-button" onclick="openTab(event, 'fuelConsumption')">Расход топлива</div>
+        </div>
+
+        <!-- Содержимое вкладки "Управление и статус" -->
+        <div id="controlStatus" class="tab-content active card p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
                 <h2 class="text-xl font-semibold mb-3">Текущий статус</h2>
                 <p class="text-sm text-gray-400 mb-2">Обновляется каждые 1 секунду</p>
@@ -220,7 +311,8 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
             </div>
         </div>
 
-        <div class="card p-6">
+        <!-- Содержимое вкладки "Настройки" -->
+        <div id="settings" class="tab-content card p-6">
             <h2 class="text-xl font-semibold mb-4">Настройки</h2>
             <div class="space-y-4">
                 <div>
@@ -270,30 +362,71 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
             </div>
         </div>
 
-        <!-- Консоль отладки скрыта -->
-        <!--
-        <div class="card p-6">
-            <h2 class="text-xl font-semibold mb-4">Консоль отладки</h2>
-            <div id="debugConsole" class="bg-gray-800 p-3 rounded-md text-sm h-48 overflow-y-scroll break-words">
+        <!-- Содержимое вкладки "Лог" -->
+        <div id="log" class="tab-content card p-6">
+            <h2 class="text-xl font-semibold mb-4">Лог устройства</h2>
+            <div class="mb-4">
+                <input type="checkbox" id="enableLoggingCheckbox" class="mr-2">
+                <label for="enableLoggingCheckbox" class="text-lg">Включить лог</label>
+            </div>
+            <div id="debugConsole" class="bg-gray-800 p-3 rounded-md text-sm h-96 overflow-y-scroll break-words">
                 Подключение к устройству...
             </div>
         </div>
-        -->
+
+        <!-- Содержимое вкладки "Wi-Fi" -->
+        <div id="wifiSettings" class="tab-content card p-6">
+            <h2 class="text-xl font-semibold mb-4">Настройки Wi-Fi</h2>
+            <div class="space-y-4">
+                <div class="text-lg mb-2">Статус подключения: <span id="wifiStatus" class="font-bold">--</span></div>
+                <div class="text-lg mb-2">SSID: <span id="wifiSSID" class="font-bold">--</span></div>
+                <div class="text-lg mb-2">IP Адрес: <span id="wifiIP" class="font-bold">--</span></div>
+                <button id="resetWifiBtn" class="btn btn-danger">Сбросить настройки Wi-Fi</button>
+                <button id="rebootEspBtn" class="btn btn-secondary">Перезагрузить ESP</button>
+            </div>
+
+            <h3 class="text-xl font-semibold mb-3 mt-6">Поиск и подключение к Wi-Fi</h3>
+            <button id="scanWifiBtn" class="btn btn-primary mb-4">Найти Wi-Fi сети</button>
+            <div id="wifiScanResults" class="space-y-2 mb-4">
+                <!-- Результаты сканирования будут здесь -->
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label for="manualSSID" class="block text-sm font-medium text-gray-400">Имя сети (SSID):</label>
+                    <input type="text" id="manualSSID" class="input-field mt-1" placeholder="Введите SSID">
+                </div>
+                <div>
+                    <label for="manualPassword" class="block text-sm font-medium text-gray-400">Пароль:</label>
+                    <input type="password" id="manualPassword" class="input-field mt-1" placeholder="Введите пароль">
+                </div>
+                <button id="connectWifiBtn" class="btn btn-primary">Подключиться</button>
+            </div>
+        </div>
+
+        <!-- Содержимое вкладки "Расход топлива" -->
+        <div id="fuelConsumption" class="tab-content card p-6">
+            <h2 class="text-xl font-semibold mb-4">Расход топлива</h2>
+            <div class="space-y-4">
+                <div class="text-lg mb-2">Текущее потребление: <span id="currentFuelConsumed" class="font-bold">--</span> л</div>
+                <div class="text-lg mb-2">Расчетный расход за час: <span id="hourlyFuelConsumption" class="font-bold">--</span> л/ч</div>
+                <button id="resetFuelBtn" class="btn btn-danger">Сбросить текущее потребление</button>
+            </div>
+        </div>
     </div>
 
     <script>
         var ws;
-        // const debugConsole = document.getElementById('debugConsole'); // Закомментировано
+        const debugConsole = document.getElementById('debugConsole'); 
 
         function log(message) {
-            // Если консоль отладки скрыта, логирование происходит только в Serial
-            // if (debugConsole) {
-            //     const p = document.createElement('p');
-            //     p.textContent = message;
-            //     debugConsole.appendChild(p);
-            //     debugConsole.scrollTop = debugConsole.scrollHeight; // Прокрутка вниз
-            // }
-            console.log(message); // Добавлено для логирования в консоль браузера
+            console.log(message); 
+            const enableLoggingCheckbox = document.getElementById('enableLoggingCheckbox');
+            if (debugConsole && enableLoggingCheckbox && enableLoggingCheckbox.checked) {
+                const p = document.createElement('p');
+                p.textContent = message;
+                debugConsole.appendChild(p);
+                debugConsole.scrollTop = debugConsole.scrollHeight; 
+            }
         }
 
         function connectWebSocket() {
@@ -304,7 +437,6 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
 
             ws.onopen = function() {
                 log('Подключено к WebSocket.');
-                // При открытии соединения, запросим настройки, но не будем обновлять статус
                 ws.send('GET_SETTINGS'); 
             };
 
@@ -312,15 +444,13 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
                 log('Получено: ' + event.data);
                 try {
                     const data = JSON.parse(event.data);
-                    // Проверяем, содержит ли ответ настройки (приходит только по запросу GET_SETTINGS/RESET_SETTINGS)
                     if (data.settings) {
                         applySettingsToForm(data.settings); 
-                    } else { // Если это не настройки, значит это обновление статуса
-                        updateUI(data); // Обновляем только показатели статуса
+                    } else { 
+                        updateUI(data); 
                     }
                 } catch (e) {
                     log('Ошибка парсинга JSON: ' + e.message + ' Данные: ' + event.data);
-                    // Если это не JSON, возможно, это старый формат ответа через Serial
                     if (event.data.startsWith("CURRENT_SETTINGS:")) {
                         parseAndApplySettings(event.data); 
                     }
@@ -338,13 +468,10 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
         }
 
         function updateUI(data) {
-            // Обновляем только отображаемые значения статуса
             document.getElementById('exhaustTemp').textContent = data.exhaust_temp !== undefined ? data.exhaust_temp.toFixed(1) : '--';
             document.getElementById('fanSpeed').textContent = data.fan_speed !== undefined ? data.fan_speed.toFixed(0) : '--';
-            // Обновлено: Расход топлива теперь берется из fuel_rate_hz
             document.getElementById('fuelRateHz').textContent = data.fuel_rate_hz !== undefined ? data.fuel_rate_hz.toFixed(2) : '--';
             
-            // Обновлено: Управление иконкой свечи накаливания
             const glowPlugIcon = document.getElementById('glowPlugIcon');
             if (data.debug_glow_plug_on !== undefined) {
                 if (data.debug_glow_plug_on) {
@@ -356,12 +483,10 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
                 }
             }
 
-
             document.getElementById('burnMode').textContent = data.burn_mode !== undefined ? data.burn_mode : '--';
             document.getElementById('attempt').textContent = data.attempt !== undefined ? data.attempt : '--';
             document.getElementById('statusMessage').textContent = data.message || 'Неизвестно';
             document.getElementById('fuelPumpingActive').textContent = data.fuel_pumping_active ? 'Активна' : 'Нет';
-
 
             const burnStatusIndicator = document.getElementById('burnStatusIndicator');
             if (data.burn !== undefined) {
@@ -395,9 +520,70 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
                 }
                 currentStateElement.textContent = stateText;
             }
+
+            // WiFi Status
+            const wifiStatusElement = document.getElementById('wifiStatus');
+            const wifiSSIDElement = document.getElementById('wifiSSID');
+            const wifiIPElement = document.getElementById('wifiIP');
+
+            if (data.wifi_status !== undefined) {
+                if (data.wifi_status === 3) { 
+                    wifiStatusElement.textContent = 'Подключено';
+                    wifiStatusElement.classList.remove('text-red-500', 'text-yellow-500');
+                    wifiStatusElement.classList.add('text-green-500');
+                    wifiSSIDElement.textContent = data.wifi_ssid || '--';
+                    wifiIPElement.textContent = data.wifi_ip || '--';
+                } else { 
+                    wifiStatusElement.textContent = 'Настройка AP';
+                    wifiStatusElement.classList.remove('text-green-500', 'text-red-500');
+                    wifiStatusElement.classList.add('text-yellow-500');
+                    wifiSSIDElement.textContent = data.wifi_ssid || '--'; 
+                    wifiIPElement.textContent = data.wifi_ip || '--';
+                }
+            }
+
+            // Logging Enabled Status
+            const enableLoggingCheckbox = document.getElementById('enableLoggingCheckbox');
+            if (data.logging_enabled !== undefined) {
+                enableLoggingCheckbox.checked = data.logging_enabled;
+            }
+
+            // WiFi Scan Results
+            if (data.wifi_networks) {
+                const resultsDiv = document.getElementById('wifiScanResults');
+                resultsDiv.innerHTML = ''; 
+                if (data.wifi_networks.length > 0) {
+                    const ul = document.createElement('ul');
+                    ul.className = 'list-disc list-inside';
+                    data.wifi_networks.forEach(network => {
+                        const li = document.createElement('li');
+                        li.className = 'text-sm cursor-pointer hover:text-blue-300';
+                        li.textContent = `${network.ssid} (RSSI: ${network.rssi} dBm)`;
+                        li.addEventListener('click', () => {
+                            document.getElementById('manualSSID').value = network.ssid;
+                            document.getElementById('manualPassword').value = ''; 
+                        });
+                        ul.appendChild(li);
+                    });
+                    resultsDiv.appendChild(ul);
+                } else {
+                    resultsDiv.innerHTML = '<p class="text-red-300">Сети не найдены.</p>';
+                }
+            }
+
+            // Fuel Consumption Display
+            if (data.total_fuel_consumed_liters !== undefined) {
+                document.getElementById('currentFuelConsumed').textContent = data.total_fuel_consumed_liters.toFixed(2);
+            } else {
+                document.getElementById('currentFuelConsumed').textContent = '--'; // Убедимся, что отображается '--' если undefined
+            }
+            if (data.fuel_consumption_per_hour !== undefined) {
+                document.getElementById('hourlyFuelConsumption').textContent = data.fuel_consumption_per_hour.toFixed(2);
+            } else {
+                document.getElementById('hourlyFuelConsumption').textContent = '--'; // Убедимся, что отображается '--' если undefined
+            }
         }
 
-        // НОВАЯ ФУНКЦИЯ: Применяет настройки к полям формы
         function applySettingsToForm(settingsData) {
             if (settingsData) {
                 document.getElementById('pumpSize').value = settingsData.pump_size;
@@ -409,13 +595,8 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
                 document.getElementById('heaterOverheatValue').textContent = settingsData.heater_overheat;
                 document.getElementById('heaterWarning').value = settingsData.heater_warning;
                 document.getElementById('heaterWarningValue').textContent = settingsData.heater_warning;
-                // Новые настройки
                 document.getElementById('maxPwmFan').value = settingsData.max_pwm_fan;
-                // Обновлено: Отображение процента для maxPwmFan
-                document.getElementById('maxPwmFanPercent').textContent = ((settingsData.max_pwm_fan / 255.0) * 100).toFixed(0);
-
                 document.getElementById('glowBrightness').value = settingsData.glow_brightness;
-                // Обновлено: Отображение процента для glowBrightness
                 document.getElementById('glowBrightnessPercent').textContent = ((settingsData.glow_brightness / 255.0) * 100).toFixed(0);
 
                 document.getElementById('glowFadeInDuration').value = settingsData.glow_fade_in_duration;
@@ -424,7 +605,6 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
         }
 
         function parseAndApplySettings(dataString) {
-            // Ожидаемый формат: "CURRENT_SETTINGS:pump_size=22,heater_target=195,..."
             const parts = dataString.split(':');
             if (parts.length < 2 || parts[0] !== "CURRENT_SETTINGS") {
                 log("Неверный формат строки настроек: " + dataString);
@@ -438,12 +618,9 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
                     settings[key.trim()] = parseInt(value.trim());
                 }
             });
-            // Вызываем новую функцию для применения настроек к форме
             applySettingsToForm(settings); 
         }
 
-
-        // Обработчики событий для кнопок
         document.getElementById('toggleBurnBtn').addEventListener('click', function() {
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send('ENTER');
@@ -491,12 +668,10 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
                 const heaterMin = document.getElementById('heaterMin').value;
                 const heaterOverheat = document.getElementById('heaterOverheat').value;
                 const heaterWarning = document.getElementById('heaterWarning').value;
-                // Новые настройки
                 const maxPwmFan = document.getElementById('maxPwmFan').value;
                 const glowBrightness = document.getElementById('glowBrightness').value;
                 const glowFadeInDuration = document.getElementById('glowFadeInDuration').value;
                 const glowFadeOutDuration = document.getElementById('glowFadeOutDuration').value;
-
 
                 const command = `SET:pump_size=${pumpSize},heater_target=${heaterTarget},heater_min=${heaterMin},heater_overheat=${heaterOverheat},heater_warning=${heaterWarning},max_pwm_fan=${maxPwmFan},glow_brightness=${glowBrightness},glow_fade_in_duration=${glowFadeInDuration},glow_fade_out_duration=${glowFadeOutDuration}`;
                 ws.send(command);
@@ -513,17 +688,74 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
             }
         });
 
-        // НОВАЯ КНОПКА: Загрузить настройки
         document.getElementById('loadSettingsBtn').addEventListener('click', function() {
             if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send('GET_SETTINGS'); // Отправляем команду для получения текущих настроек
+                ws.send('GET_SETTINGS'); 
                 log('Запрос текущих настроек...');
             } else {
                 log('WebSocket не подключен.');
             }
         });
 
-        // Обновление значений слайдеров
+        document.getElementById('resetWifiBtn').addEventListener('click', function() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send('RESET_WIFI');
+                log('Отправлена команда: Сбросить настройки Wi-Fi.');
+            } else {
+                log('WebSocket не подключен.');
+            }
+        });
+
+        document.getElementById('rebootEspBtn').addEventListener('click', function() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send('REBOOT_ESP');
+                log('Отправлена команда: Перезагрузить ESP.');
+            } else {
+                log('WebSocket не подключен.');
+            }
+        });
+
+        document.getElementById('enableLoggingCheckbox').addEventListener('change', function() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(this.checked ? 'ENABLE_LOGGING' : 'DISABLE_LOGGING');
+                log('Отправлена команда: ' + (this.checked ? 'Включить' : 'Выключить') + ' лог.');
+            } else {
+                log('WebSocket не подключен.');
+                this.checked = !this.checked; 
+            }
+        });
+
+        document.getElementById('scanWifiBtn').addEventListener('click', function() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send('SCAN_WIFI');
+                log('Отправлена команда: Сканировать Wi-Fi сети.');
+                document.getElementById('wifiScanResults').innerHTML = '<p class="text-yellow-300">Сканирование...</p>';
+            } else {
+                log('WebSocket не подключен.');
+            }
+        });
+
+        document.getElementById('connectWifiBtn').addEventListener('click', function() {
+            const ssid = document.getElementById('manualSSID').value;
+            const password = document.getElementById('manualPassword').value;
+            if (ssid && ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(`CONNECT_WIFI:${ssid},${password}`);
+                log(`Отправлена команда: Подключиться к Wi-Fi "${ssid}".`);
+            } else {
+                log('Ошибка: SSID не может быть пустым или WebSocket не подключен.');
+            }
+        });
+
+        document.getElementById('resetFuelBtn').addEventListener('click', function() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send('RESET_FUEL_CONSUMPTION');
+                log('Отправлена команда: Сбросить текущее потребление топлива.');
+            } else {
+                log('WebSocket не подключен.');
+            }
+        });
+
+
         document.getElementById('heaterTarget').addEventListener('input', function() {
             document.getElementById('heaterTargetValue').textContent = this.value;
         });
@@ -537,9 +769,34 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
             document.getElementById('heaterWarningValue').textContent = this.value;
         });
 
+        function openTab(evt, tabName) {
+            var i, tabcontent, tablinks;
+            tabcontent = document.getElementsByClassName("tab-content");
+            for (i = 0; i < tabcontent.length; i++) {
+                tabcontent[i].style.display = "none"; 
+                tabcontent[i].classList.remove('active'); 
+            }
+            tablinks = document.getElementsByClassName("tab-button");
+            for (i = 0; i < tablinks.length; i++) {
+                tablinks[i].classList.remove("active"); 
+            }
+            document.getElementById(tabName).style.display = "block"; 
+            document.getElementById(tabName).classList.add('active'); 
+            evt.currentTarget.classList.add("active"); 
+        }
 
-        // Инициализация подключения при загрузке страницы
-        window.onload = connectWebSocket;
+        window.onload = function() {
+            connectWebSocket();
+            // Скрываем все вкладки, кроме первой, при загрузке страницы
+            var tabContents = document.getElementsByClassName("tab-content");
+            for (var i = 1; i < tabContents.length; i++) {
+                tabContents[i].style.display = "none";
+                tabContents[i].classList.remove('active');
+            }
+            document.getElementById('controlStatus').style.display = 'block';
+            document.getElementById('controlStatus').classList.add('active');
+            document.querySelector('.tab-buttons .tab-button:first-child').classList.add('active');
+        };
 
     </script>
 </body>
@@ -675,6 +932,56 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
         handleFuelPumpingCommand();
       } else if (strcmp((char*)payload, "CF") == 0) { 
         webasto_fail = false; // Сброс флага ошибки
+      } else if (strcmp((char*)payload, "RESET_WIFI") == 0) {
+        Serial.println("DEBUG: Received RESET_WIFI command. Resetting WiFi settings.");
+        WiFiManager wifiManager;
+        wifiManager.resetSettings(); // Очищает сохраненные учетные данные Wi-Fi
+        Serial.println("DEBUG: WiFi settings cleared. Rebooting to apply changes.");
+        ESP.restart(); // Перезагружаем ESP, чтобы WiFiManager запустил портал
+      } else if (strcmp((char*)payload, "REBOOT_ESP") == 0) {
+        Serial.println("DEBUG: Received REBOOT_ESP command. Rebooting.");
+        ESP.restart(); // Просто перезагружаем ESP
+      } else if (strcmp((char*)payload, "ENABLE_LOGGING") == 0) {
+          loggingEnabled = true;
+          Serial.println("DEBUG: Logging enabled.");
+          send_status_update(); // Отправить обновленный статус
+      } else if (strcmp((char*)payload, "DISABLE_LOGGING") == 0) {
+          loggingEnabled = false;
+          Serial.println("DEBUG: Logging disabled.");
+          send_status_update(); // Отправить обновленный статус
+      } else if (strcmp((char*)payload, "SCAN_WIFI") == 0) {
+          Serial.println("DEBUG: Received SCAN_WIFI command. Scanning networks...");
+          int n = WiFi.scanNetworks();
+          Serial.printf("DEBUG: Scan done. Found %d networks.\n", n);
+          StaticJsonDocument<512> doc; // Увеличиваем размер для списка сетей
+          JsonArray networksArray = doc.createNestedArray("wifi_networks");
+          for (int i = 0; i < n; ++i) {
+              JsonObject network = networksArray.createNestedObject();
+              network["ssid"] = WiFi.SSID(i);
+              network["rssi"] = WiFi.RSSI(i);
+          }
+          String jsonString;
+          serializeJson(doc, jsonString);
+          webSocket.broadcastTXT(jsonString);
+          WiFi.scanDelete(); // Очищаем результаты сканирования
+      } else if (strncmp((char*)payload, "CONNECT_WIFI:", 13) == 0) {
+          char* commandStr = (char*)payload + 13;
+          char* ssid = strtok(commandStr, ",");
+          char* password = strtok(NULL, ",");
+
+          if (ssid) {
+              Serial.printf("DEBUG: Received CONNECT_WIFI command. Connecting to SSID: %s\n", ssid);
+              WiFi.begin(ssid, password ? password : ""); // Если пароль пустой, передаем пустую строку
+              // WiFiManager handles saving credentials automatically once connected
+              // No need to call wifiManager.autoConnect() or saveConfig() here.
+              // Just try to connect. The UI will get status updates.
+          } else {
+              Serial.println("ERROR: CONNECT_WIFI command missing SSID.");
+          }
+      } else if (strcmp((char*)payload, "RESET_FUEL_CONSUMPTION") == 0) { // NEW: Reset fuel consumption
+          Serial.println("DEBUG: Received RESET_FUEL_CONSUMPTION command. Resetting total fuel consumed.");
+          total_fuel_consumed_liters = 0.0;
+          send_status_update(); // Обновляем UI
       }
       break;
     case WStype_BIN:
@@ -695,7 +1002,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
 // Функция для отправки данных о состоянии по WebSocket
 void send_status_update() {
   if (wsConnected) {
-    StaticJsonDocument<256> doc; 
+    StaticJsonDocument<512> doc; // Увеличено до 512 байт
 
     // Расчет "Расход топлива" (fuel_rate_hz)
     float calculated_fuel_rate_hz = 0.0;
@@ -716,6 +1023,18 @@ void send_status_update() {
     doc["attempt"] = attempt; 
     doc["burn"] = burn; 
     doc["currentState"] = currentState; 
+
+    // Добавляем данные о Wi-Fi
+    doc["wifi_status"] = WiFi.status();
+    doc["wifi_ssid"] = WiFi.SSID();
+    doc["wifi_ip"] = WiFi.localIP().toString();
+
+    // Добавляем состояние логирования
+    doc["logging_enabled"] = loggingEnabled;
+
+    // Добавляем данные о расходе топлива
+    doc["total_fuel_consumed_liters"] = total_fuel_consumed_liters; 
+    doc["fuel_consumption_per_hour"] = fuel_consumption_per_hour; 
 
 
     String jsonString;

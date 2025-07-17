@@ -56,6 +56,10 @@ unsigned long glow_brightness_max = 90;   // максимальная яркос
 unsigned long glow_fade_in_duration_ms = 10000;
 unsigned long glow_fade_out_duration_ms = 5000;
 
+// переменные для рассхода топлива
+float total_fuel_consumed_liters = 0.0;
+float fuel_consumption_per_hour = 0.0;
+
 // Буфер для входящих команд
 const int SERIAL_BUFFER_SIZE = 128; // Увеличен буфер для длинных команд SET
 char inputBuffer[SERIAL_BUFFER_SIZE];
@@ -137,6 +141,8 @@ bool fuelPumpState = LOW; // Текущее состояние пина насо
 const unsigned long PUMP_ON_DURATION_MS = 30;  // Длительность включения насоса в мс
 const unsigned long PUMP_OFF_DURATION_MS = 110; // Длительность выключения насоса в мс
 const int TOTAL_PUMP_CYCLES = 200; // Общее количество циклов прокачки
+
+bool loggingEnabled = false; // Инициализируем лог по умолчанию выключенным
 
 // Глобальные переменные для отслеживания предыдущих состояний дисплея
 int prev_exhaust_temp = -1;
@@ -232,7 +238,7 @@ void setup() {
     Serial.println(F("EEPROM: Настройки успешно загружены."));
   }
   applySettings(); // Применяем загруженные (или дефолтные) настройки к рабочим переменным
-  
+
     // Инициализация Wi-Fi AP и веб-сервера
   setup_wifi_station();
 }
@@ -302,7 +308,6 @@ void resetToDefaultSettings() {
   settings.glow_brightness = 90UL; // Использование UL для unsigned long
   settings.glow_fade_in_duration = 10000UL; // Использование UL для unsigned long
   settings.glow_fade_out_duration = 5000UL; // Использование UL для unsigned long
-
 
   EEPROM.put(0, settings); // Записываем настройки в EEPROM
   EEPROM.commit(); // Сохраняем изменения во флеш-память
