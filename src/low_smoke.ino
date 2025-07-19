@@ -138,7 +138,7 @@ int fuelPumpCurrentCycle = 0;
 unsigned long lastFuelPumpToggleTime = 0;
 bool fuelPumpState = LOW; // Текущее состояние пина насоса (LOW или HIGH)
 
-const unsigned long PUMP_ON_DURATION_MS = 30;  // Длительность включения насоса в мс
+const unsigned long PUMP_ON_DURATION_MS = 60;  // Длительность включения насоса в мс
 const unsigned long PUMP_OFF_DURATION_MS = 110; // Длительность выключения насоса в мс
 const int TOTAL_PUMP_CYCLES = 200; // Общее количество циклов прокачки
 
@@ -213,7 +213,7 @@ void setup() {
   // Установка частоты ШИМ для ESP8266
   analogWriteFreq(500); // Устанавливаем частоту ШИМ 500 Гц
 
-  Serial.begin(9600); // Инициализация последовательного порта
+  Serial.begin(57600); // Инициализация последовательного порта
 
   // Инициализация EEPROM для ESP8266
   EEPROM.begin(sizeof(Settings)); // Выделяем необходимое количество байт для структуры настроек

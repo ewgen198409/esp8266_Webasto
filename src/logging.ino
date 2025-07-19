@@ -1,3 +1,4 @@
+
 void logging(int ignit_fail, float temp_init, int seconds) {
   if (settingsUpdateInProgress) {
     return; // Пропускаем выполнение, если идёт обновление настроек

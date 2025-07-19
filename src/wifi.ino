@@ -595,7 +595,11 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
                 document.getElementById('heaterOverheatValue').textContent = settingsData.heater_overheat;
                 document.getElementById('heaterWarning').value = settingsData.heater_warning;
                 document.getElementById('heaterWarningValue').textContent = settingsData.heater_warning;
+
+                // Расчет и отображение процента для maxPwmFan
+                document.getElementById('maxPwmFanPercent').textContent = ((settingsData.max_pwm_fan / 255.0) * 100).toFixed(0);
                 document.getElementById('maxPwmFan').value = settingsData.max_pwm_fan;
+                
                 document.getElementById('glowBrightness').value = settingsData.glow_brightness;
                 document.getElementById('glowBrightnessPercent').textContent = ((settingsData.glow_brightness / 255.0) * 100).toFixed(0);
 
@@ -1040,7 +1044,6 @@ void send_status_update() {
     String jsonString;
     serializeJson(doc, jsonString);
     webSocket.broadcastTXT(jsonString);
-    Serial.println("DEBUG: Sent status update via WebSocket."); 
   } else {
     Serial.println("DEBUG: WebSocket not connected, status update skipped."); 
   }
