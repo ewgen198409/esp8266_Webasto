@@ -20,7 +20,7 @@ enum SystemState {
   STATE_MID,    // вместо MID         // 1
   STATE_LOW     // вместо LOW         // 2
 };
-SystemState currentState = STATE_HIGH;  // Начальное состояние
+SystemState currentState = STATE_MID;  // Начальное состояние
 
 // Определяем массив для контура знакоместа
 byte contour[] = { B11111, B10001, B10001, B10001, B10001, B10001, B10001, B11111 };
@@ -556,33 +556,25 @@ void handleSettingsUpdate(char* paramsStr, bool is_from_websocket) { // Изме
         settings.heater_warning = parsedValue;
         paramsFound++;
       }
-      // Эти параметры можно изменять только через WebSocket
-      else if (is_from_websocket) {
-        if (strcmp(key, "max_pwm_fan") == 0) {
-          settings.max_pwm_fan = parsedValue;
-          paramsFound++;
-        }
-        else if (strcmp(key, "glow_brightness") == 0) {
-          settings.glow_brightness = parsedValue;
-          paramsFound++;
-        }
-        else if (strcmp(key, "glow_fade_in_duration") == 0) {
-          settings.glow_fade_in_duration = parsedValue;
-          paramsFound++;
-        }
-        else if (strcmp(key, "glow_fade_out_duration") == 0) {
-          settings.glow_fade_out_duration = parsedValue;
-          paramsFound++;
-        }
-        else {
-          Serial.print(F("Неизвестный ключ: "));
-          Serial.println(key);
-        }
+      else if (strcmp(key, "max_pwm_fan") == 0) {
+        settings.max_pwm_fan = parsedValue;
+        paramsFound++;
+      }
+      else if (strcmp(key, "glow_brightness") == 0) {
+        settings.glow_brightness = parsedValue;
+        paramsFound++;
+      }
+      else if (strcmp(key, "glow_fade_in_duration") == 0) {
+        settings.glow_fade_in_duration = parsedValue;
+        paramsFound++;
+      }
+      else if (strcmp(key, "glow_fade_out_duration") == 0) {
+        settings.glow_fade_out_duration = parsedValue;
+        paramsFound++;
       }
       else {
-        Serial.print(F("Настройка '"));
-        Serial.print(key);
-        Serial.println(F("' может быть изменена только через WebSocket."));
+        Serial.print(F("Неизвестный ключ: "));
+        Serial.println(key);
       }
     } else {
       Serial.print(F("Неверный формат параметра: "));

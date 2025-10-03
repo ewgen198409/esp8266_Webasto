@@ -22,7 +22,7 @@ void logging(int ignit_fail, float temp_init, int seconds) {
     Serial.print(" | FN: ");
     Serial.print(fuel_need);
     Serial.print(" | Gl: ");
-    Serial.print(glow_left);
+    Serial.print(debug_glow_plug_on);
     Serial.print(" | CyTim: ");
     Serial.print(seconds);
     Serial.print(" | I: ");
