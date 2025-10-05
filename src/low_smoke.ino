@@ -447,15 +447,10 @@ void processSerialCommands() {
 
 // Обрабатывает команду "UP"
 void handleUpCommand() {
-  // Serial.println(F("DEBUG: Вызвана handleUpCommand()"));
-  if (exhaust_temp > 150 || burn == 0) {
-    switch (currentState) {
-      case STATE_HIGH: currentState = STATE_MID; break;
-      case STATE_MID: currentState = STATE_LOW; break;
-      case STATE_LOW: break; // Остаемся в LOW
-    }
-  } else {
-    // Serial.println(F("DEBUG: Условие для UP не выполнено (exhaust_temp <= 150 и burn == 1)"));
+  switch (currentState) {
+    case STATE_HIGH: currentState = STATE_MID; break;
+    case STATE_MID: currentState = STATE_LOW; break;
+    case STATE_LOW: break; // Остаемся в LOW
   }
   Serial.print(F("State: "));
   if (currentState == STATE_HIGH) Serial.println(F("HIGH"));
@@ -465,15 +460,10 @@ void handleUpCommand() {
 
 // Обрабатывает команду "DOWN"
 void handleDownCommand() {
-  // Serial.println(F("DEBUG: Вызвана handleDownCommand()"));
-  if (exhaust_temp > 150 || burn == 0) {
-    switch (currentState) {
-      case STATE_LOW: currentState = STATE_MID; break;
-      case STATE_MID: currentState = STATE_HIGH; break;
-      case STATE_HIGH: break; // Остаемся в HIGH
-    }
-  } else {
-    // Serial.println(F("DEBUG: Условие для DOWN не выполнено (exhaust_temp <= 150 и burn == 1)"));
+  switch (currentState) {
+    case STATE_LOW: currentState = STATE_MID; break;
+    case STATE_MID: currentState = STATE_HIGH; break;
+    case STATE_HIGH: break; // Остаемся в HIGH
   }
   Serial.print(F("State: "));
   if (currentState == STATE_HIGH) Serial.println(F("HIGH"));

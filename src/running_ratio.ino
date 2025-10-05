@@ -30,7 +30,7 @@ void running_ratio(float exhaust_temp) {
 
 
   // Если температура выхлопа больше 150, начинаем регулировку (Переход в режим работы !!!)
-  if (exhaust_temp >= 150) {
+  if (exhaust_temp >= 100) {
     // Вычисляем текущее значение топлива
     fuel_current = fuel_need * 100;
 

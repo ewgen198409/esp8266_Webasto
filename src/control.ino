@@ -181,16 +181,11 @@ void control() {
   } else { // Если кнопка отпущена
     if (pushup_pushed && (current_time - pushup_timer > debounceDelay)) {
 
-      // Разрешаем переключение только если exhaust_temp > 150 или burn == 0
-      if (exhaust_temp > 150 || burn == 0) {
-        // Переключаем состояние
-        switch (currentState) {
-          case STATE_HIGH: currentState = STATE_MID; Serial.println(F("DEBUG: State changed to MID")); break;
-          case STATE_MID: currentState = STATE_LOW; Serial.println(F("DEBUG: State changed to LOW")); break;
-          case STATE_LOW: Serial.println(F("DEBUG: State remains LOW")); break; // Остается в STATE_LOW
-        }
-      } else {
-        Serial.println(F("DEBUG: State change not allowed (temp < 150 or burn ON)")); // Отладочный вывод
+      // Переключаем состояние
+      switch (currentState) {
+        case STATE_HIGH: currentState = STATE_MID; Serial.println(F("DEBUG: State changed to MID")); break;
+        case STATE_MID: currentState = STATE_LOW; Serial.println(F("DEBUG: State changed to LOW")); break;
+        case STATE_LOW: Serial.println(F("DEBUG: State remains LOW")); break; // Остается в STATE_LOW
       }
       pushup_pushed = false;
     }
@@ -212,16 +207,11 @@ void control() {
   } else { // Если кнопка отпущена
     if (pushdown_pushed && (current_time - pushdown_timer > debounceDelay)) {
 
-      // Разрешаем переключение только если exhaust_temp > 150 или burn == 0
-      if (exhaust_temp > 150 || burn == 0) {
-        // Переключаем состояние
-        switch (currentState) {
-          case STATE_LOW: currentState = STATE_MID; Serial.println(F("DEBUG: State changed to MID")); break;
-          case STATE_MID: currentState = STATE_HIGH; Serial.println(F("DEBUG: State changed to HIGH")); break;
-          case STATE_HIGH: Serial.println(F("DEBUG: State remains HIGH")); break; // Остается в STATE_HIGH
-        }
-      } else {
-        Serial.println(F("DEBUG: State change not allowed (temp < 150 or burn ON)")); // Отладочный вывод
+      // Переключаем состояние
+      switch (currentState) {
+        case STATE_LOW: currentState = STATE_MID; Serial.println(F("DEBUG: State changed to MID")); break;
+        case STATE_MID: currentState = STATE_HIGH; Serial.println(F("DEBUG: State changed to HIGH")); break;
+        case STATE_HIGH: Serial.println(F("DEBUG: State remains HIGH")); break; // Остается в STATE_HIGH
       }
       pushdown_pushed = false;
     }
