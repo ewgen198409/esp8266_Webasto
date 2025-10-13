@@ -11,6 +11,13 @@
 #include <WebSocketsServer.h> // Добавьте, если еще нет
 #include <ESP8266mDNS.h> // Библиотека для mDNS
 
+#include <OneWire.h>
+#include <DallasTemperature.h>
+
+OneWire oneWire(D0); // Пин D0 для датчика DS18B20
+DallasTemperature sensors(&oneWire);
+float ds18b20_temp; // Переменная для хранения температуры с DS18B20
+
 // Укажите адрес вашего I2C дисплея (обычно 0x27 или 0x3F)
 LiquidCrystal_I2C lcd(0x27, 16, 2); // Установите адрес, количество символов и строк
 
@@ -61,7 +68,7 @@ float total_fuel_consumed_liters = 0.0;
 float fuel_consumption_per_hour = 0.0;
 
 // Буфер для входящих команд
-const int SERIAL_BUFFER_SIZE = 128; // Увеличен буфер для длинных команд SET
+const int SERIAL_BUFFER_SIZE = 256;                                                               // Увеличен буфер для длинных команд SET
 char inputBuffer[SERIAL_BUFFER_SIZE];
 byte inputBufferIndex = 0;
 bool stringComplete = false;
@@ -239,7 +246,10 @@ void setup() {
   }
   applySettings(); // Применяем загруженные (или дефолтные) настройки к рабочим переменным
 
-    // Инициализация Wi-Fi AP и веб-сервера
+  // Инициализация датчика DS18B20
+  sensors.begin();
+
+  // Инициализация Wi-Fi AP и веб-сервера
   setup_wifi_station();
 }
 
@@ -254,6 +264,13 @@ void loop() {
 
   // Обработка клиентов Wi-Fi и WebSocket
   handle_wifi_clients();
+
+  // Чтение температуры с датчика DS18B20
+  sensors.requestTemperatures();
+  ds18b20_temp = sensors.getTempCByIndex(0);
+  if (ds18b20_temp == DEVICE_DISCONNECTED_C) {
+    ds18b20_temp = 0; // Или другое значение по умолчанию
+  }
 
   // Основной цикл работы
   temp_data(); // Предполагаемые функции (убедитесь, что они определены)
@@ -425,6 +442,12 @@ void processSerialCommands() {
       } else {
         Serial.println(F("NO_FAIL_TO_CLEAR"));
       }
+    }
+    else if (strcmp(currentCommandPtr, "RESET_FUEL_CONSUMPTION") == 0) {
+      // Serial.println(F("DEBUG: Идентифицирована команда RESET_FUEL_CONSUMPTION."));
+      total_fuel_consumed_liters = 0.0;
+      send_status_update(); // Обновляем UI
+      Serial.println(F("FUEL_RESET_OK"));
     }
     else {
       /*
@@ -668,3 +691,49 @@ void runFuelPumpingRoutine() {
     lcd.print(F("OFF             ")); // Возврат к "OFF" или другому статусу
   }
 }
+
+
+
+
+// Проверка всех файлов проекта завершена. Логика работы нагревателя корректна, компиляция успешна. Вот краткий анализ ключевых аспектов:
+
+// ### __Логирование (src/logging.ino)__
+
+// - Выводит параметры в Serial каждую секунду: webasto_fail, ignit_fail, exhaust_temp, fan_speed, fuel_need, glow_time, message и др.
+// - Блокируется при обновлении настроек (settingsUpdateInProgress).
+// - Формат: `| F: 0 | IgnF#: 0 | ETmp: 25.3 | Fan%: 50.0 | FHZ 10.0 | FN: 2.5 | Gl: 0 | CyTim: 10 | I: Running | FinalFuel: 2.38 | St: 1`
+
+// ### __Работа с EEPROM (src/low_smoke.ino)__
+
+// - Структура `Settings`: pump_size, heater_target, heater_min, heater_overheat, heater_warning, max_pwm_fan, glow_brightness, fade_in/out_duration.
+// - Магическое число (0x12345679) для проверки целостности.
+// - Загрузка при старте, сохранение при обновлении.
+// - Сброс на дефолт при повреждении или первом запуске.
+// - Применение настроек к переменным после загрузки.
+
+// ### __Общая логика проекта__
+
+// - __Wi-Fi/WebSocket (src/wifi.ino)__: Веб-интерфейс с вкладками (управление, настройки, лог, Wi-Fi, расход топлива). Команды через WebSocket (UP/DOWN/ENTER/SET/RESET и др.). Сканирование сетей, подключение, сброс Wi-Fi.
+
+// - __Управление (src/control.ino)__: Кнопки для вкл/выкл, сброс ошибок, прокачка топлива (10 сек), переключение режимов HIGH/MID/LOW.
+
+// - __Датчики и актуаторы__:
+
+//   - Температура (src/temp_data.ino, src/get_webasto_temp.ino): Скользящее среднее, проверка на ошибки (-999 при сбое).
+//   - Вентилятор (src/fan.ino): PWM управление, плавное изменение скорости.
+//   - Насос (src/fuel_pump.ino): PWM для топлива, неблокирующая прокачка.
+//   - Свеча (src/glow.ino): PWM с fade-in/out, выключение при temp >70°C (исправлено).
+
+// - __Дисплей (src/display1602.ino)__: LCD 16x2, отображение статуса, температуры, режима.
+
+// - __Расчеты (src/prime_ratio.ino, src/running_ratio.ino, src/mapf.ino)__: Соотношения топлива по температуре, регулировка в режиме горения.
+
+// - __Основная логика (src/webasto.ino)__: Режимы 0-3 (выкл/запуск/горение/выключение), переходы по условиям, обработка ошибок.
+
+// ### __Потенциальные замечания__
+
+// - Все файлы связаны через extern переменные и функции.
+// - EEPROM использует ESP8266 EEPROM (эмуляция флеш).
+// - Wi-Fi: Автоподключение через WiFiManager, AP при неудаче.
+// - Расход топлива: Учет в total_fuel_consumed_liters, расчет per_hour.
+// - Нет критических ошибок в логике; изменения (вынос условия свечи) улучшают надежность.

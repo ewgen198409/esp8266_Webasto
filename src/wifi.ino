@@ -3,7 +3,6 @@
 #include <WebSocketsServer.h>
 #include <ArduinoJson.h> // Библиотека для работы с JSON
 #include <ESP8266mDNS.h> // Библиотека для mDNS
-#include <WiFiManager.h> // Добавлена библиотека WiFiManager
 
 // Глобальная переменная для управления логированием
 extern bool loggingEnabled;
@@ -355,10 +354,11 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
                     <label for="glowFadeOutDuration" class="block text-sm font-medium text-gray-400">Время затухания свечи (мс):</label>
                     <input type="number" id="glowFadeOutDuration" class="input-field mt-1" min="0" max="60000">
                 </div>
-                <div class="grid grid-cols-2 gap-4">
+                <div class="flex space-x-4"> <!-- Изменено на flex для расположения в ряд -->
                     <button id="saveSettingsBtn" class="btn btn-primary">Сохранить настройки</button>
                     <button id="resetSettingsBtn" class="btn btn-danger">Сбросить настройки</button>
-                    <button id="loadSettingsBtn" class="btn btn-secondary col-span-2">Загрузить настройки</button> </div>
+                </div>
+                <button id="loadSettingsBtn" class="btn btn-secondary w-full">Загрузить настройки</button> <!-- Кнопка загрузки теперь занимает всю ширину -->
             </div>
         </div>
 
@@ -381,8 +381,10 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
                 <div class="text-lg mb-2">Статус подключения: <span id="wifiStatus" class="font-bold">--</span></div>
                 <div class="text-lg mb-2">SSID: <span id="wifiSSID" class="font-bold">--</span></div>
                 <div class="text-lg mb-2">IP Адрес: <span id="wifiIP" class="font-bold">--</span></div>
-                <button id="resetWifiBtn" class="btn btn-danger">Сбросить настройки Wi-Fi</button>
-                <button id="rebootEspBtn" class="btn btn-secondary">Перезагрузить ESP</button>
+                <div class="flex space-x-4"> <!-- Добавлен flex контейнер с горизонтальным отступом -->
+                    <button id="resetWifiBtn" class="btn btn-danger">Сбросить настройки Wi-Fi</button>
+                    <button id="rebootEspBtn" class="btn btn-secondary">Перезагрузить ESP</button>
+                </div>
             </div>
 
             <h3 class="text-xl font-semibold mb-3 mt-6">Поиск и подключение к Wi-Fi</h3>
@@ -430,8 +432,8 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
         }
 
         function connectWebSocket() {
-            const wsUrl = 'ws://' + window.location.hostname + ':81/';
-            
+            const wsUrl = 'ws://192.168.10.10:81/';
+
             ws = new WebSocket(wsUrl);
             log('Попытка подключения к WebSocket по адресу: ' + wsUrl);
 
@@ -807,47 +809,41 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
 </html>
 )rawliteral";
 
-// Функция для инициализации Wi-Fi в режиме клиента
+// Функция для инициализации Wi-Fi в режиме точки доступа
 void setup_wifi_station() {
   Serial.println();
-  Serial.println("DEBUG: === Starting WiFi Station setup ===");
+  Serial.println("DEBUG: === Starting WiFi Access Point setup ===");
   Serial.flush();
-
-  // Создаем объект WiFiManager
-  WiFiManager wifiManager;
 
   // Устанавливаем режим сна Wi-Fi в WIFI_NONE_SLEEP для повышения стабильности
   WiFi.setSleepMode(WIFI_NONE_SLEEP);
 
-  // Устанавливаем колбэк для портала конфигурации (чтобы видеть, когда он активен)
-  wifiManager.setAPCallback([](WiFiManager *myWiFiManager) {
-    Serial.println("DEBUG: Entered WiFi setup portal mode.");
-    Serial.print("DEBUG: Connect to AP: ");
-    Serial.println(myWiFiManager->getConfigPortalSSID());
-    Serial.print("DEBUG: IP address: ");
+  // Настраиваем точку доступа с фиксированными параметрами
+  const char* ap_ssid = mdns_hostname; // Используем mdns_hostname как SSID
+  const char* ap_password = "12345678"; // Фиксированный пароль
+  IPAddress ap_ip(192, 168, 10, 10); // Фиксированный IP точки доступа
+  IPAddress subnet(255, 255, 255, 0); // Маска подсети
+  IPAddress dhcp_start(192, 168, 10, 100); // Начало диапазона DHCP
+  IPAddress dhcp_end(192, 168, 10, 110); // Конец диапазона DHCP
+
+  // Настраиваем статический IP для точки доступа
+  WiFi.softAPConfig(ap_ip, ap_ip, subnet);
+
+  // Запускаем точку доступа
+  if (WiFi.softAP(ap_ssid, ap_password)) {
+    Serial.println("DEBUG: Access Point started successfully.");
+    Serial.print("DEBUG: AP SSID: ");
+    Serial.println(ap_ssid);
+    Serial.print("DEBUG: AP Password: ");
+    Serial.println(ap_password);
+    Serial.print("DEBUG: AP IP address: ");
     Serial.println(WiFi.softAPIP());
     Serial.flush();
-  });
-
-  // autoConnect() будет пытаться подключиться к сохраненным учетным данным.
-  // Если не удастся, он запустит Captive Portal.
-  // Имя AP для Captive Portal будет "AutoConnectAP" или указанное вами.
-  // В данном случае, мы хотим использовать mdns_hostname как имя AP для удобства.
-  // Если autoConnect() возвращает false, это значит, что портал был запущен,
-  // но пользователь не настроил Wi-Fi или произошла ошибка.
-  if (!wifiManager.autoConnect(mdns_hostname)) { // Используем mdns_hostname как SSID для AP
-    Serial.println("ERROR: Failed to connect to WiFi or configure via portal. Continuing without network services.");
+  } else {
+    Serial.println("ERROR: Failed to start Access Point!");
     Serial.flush();
-    // Здесь функция просто завершается, позволяя setup() и loop() продолжить работу.
-    // Веб-сервер и WebSocket не будут запущены.
-    return; 
+    return;
   }
-
-  // Если мы дошли сюда, значит, подключение к Wi-Fi успешно или пользователь настроил его.
-  Serial.println("\nDEBUG: WiFi connected successfully.");
-  Serial.print("DEBUG: IP address: ");
-  Serial.println(WiFi.localIP());
-  Serial.flush();
 
   // Инициализация mDNS
   if (MDNS.begin(mdns_hostname)) {
@@ -860,7 +856,7 @@ void setup_wifi_station() {
     Serial.flush();
   }
 
-  Serial.println("DEBUG: Setting up HTTP server route for '/'..."); 
+  Serial.println("DEBUG: Setting up HTTP server route for '/'...");
   Serial.flush();
   // Обработчик корневого URL
   server.on("/", HTTP_GET, []() {
@@ -868,7 +864,7 @@ void setup_wifi_station() {
     Serial.println("DEBUG: HTTP request for '/' received and page sent.");
     Serial.flush();
   });
-  Serial.println("DEBUG: HTTP server route for '/' configured."); 
+  Serial.println("DEBUG: HTTP server route for '/' configured.");
   Serial.flush();
 
   Serial.println("DEBUG: Starting HTTP server...");
@@ -882,18 +878,16 @@ void setup_wifi_station() {
   webSocket.begin();
   webSocket.onEvent(webSocketEvent);
   Serial.println("DEBUG: WebSocket server started.");
-  Serial.println("DEBUG: === WiFi Station setup complete ===");
+  Serial.println("DEBUG: === WiFi Access Point setup complete ===");
   Serial.flush();
 }
 
 // Функция для обработки клиентов Wi-Fi и WebSocket
 void handle_wifi_clients() {
-  // Проверяем, подключен ли Wi-Fi, прежде чем пытаться обрабатывать клиентов
-  if (WiFi.status() == WL_CONNECTED) {
-    server.handleClient();
-    webSocket.loop(); // ОЧЕНЬ ВАЖНО: Вызывать webSocket.loop() как можно чаще в loop()
-    MDNS.update(); // Обязательно вызывайте в loop() для работы mDNS
-  }
+  // В режиме точки доступа всегда обрабатываем клиентов
+  server.handleClient();
+  webSocket.loop(); // ОЧЕНЬ ВАЖНО: Вызывать webSocket.loop() как можно чаще в loop()
+  MDNS.update(); // Обязательно вызывайте в loop() для работы mDNS
 }
 
 void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length) {
@@ -937,11 +931,9 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
       } else if (strcmp((char*)payload, "CF") == 0) { 
         webasto_fail = false; // Сброс флага ошибки
       } else if (strcmp((char*)payload, "RESET_WIFI") == 0) {
-        Serial.println("DEBUG: Received RESET_WIFI command. Resetting WiFi settings.");
-        WiFiManager wifiManager;
-        wifiManager.resetSettings(); // Очищает сохраненные учетные данные Wi-Fi
+        Serial.println("DEBUG: Received RESET_WIFI command. Rebooting ESP.");
         Serial.println("DEBUG: WiFi settings cleared. Rebooting to apply changes.");
-        ESP.restart(); // Перезагружаем ESP, чтобы WiFiManager запустил портал
+        ESP.restart(); // Перезагружаем ESP
       } else if (strcmp((char*)payload, "REBOOT_ESP") == 0) {
         Serial.println("DEBUG: Received REBOOT_ESP command. Rebooting.");
         ESP.restart(); // Просто перезагружаем ESP
@@ -1028,10 +1020,10 @@ void send_status_update() {
     doc["burn"] = burn; 
     doc["currentState"] = currentState; 
 
-    // Добавляем данные о Wi-Fi
-    doc["wifi_status"] = WiFi.status();
-    doc["wifi_ssid"] = WiFi.SSID();
-    doc["wifi_ip"] = WiFi.localIP().toString();
+    // Добавляем данные о Wi-Fi (для режима точки доступа)
+    doc["wifi_status"] = 3; // WL_CONNECTED - всегда подключено в AP режиме
+    doc["wifi_ssid"] = mdns_hostname; // SSID точки доступа
+    doc["wifi_ip"] = WiFi.softAPIP().toString(); // IP точки доступа
 
     // Добавляем состояние логирования
     doc["logging_enabled"] = loggingEnabled;

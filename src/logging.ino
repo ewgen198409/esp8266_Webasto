@@ -1,4 +1,8 @@
 
+extern float total_fuel_consumed_liters;
+extern float fuel_consumption_per_hour;
+extern float ds18b20_temp;
+
 void logging(int ignit_fail, float temp_init, int seconds) {
   if (settingsUpdateInProgress) {
     return; // Пропускаем выполнение, если идёт обновление настроек
@@ -26,10 +30,16 @@ void logging(int ignit_fail, float temp_init, int seconds) {
     Serial.print(" | CyTim: ");
     Serial.print(seconds);
     Serial.print(" | I: ");
-    Serial.print(message); 
+    Serial.println(message);
     Serial.print(" | FinalFuel: ");
-    Serial.println(final_fuel);
+    Serial.print(final_fuel);
+    Serial.print(" | TFC: ");
+    Serial.print(total_fuel_consumed_liters, 3);
+    Serial.print(" | FCH: ");
+    Serial.print(fuel_consumption_per_hour, 3);
     Serial.print(" | St: ");
-    Serial.println(currentState);
+    Serial.print(currentState);
+    Serial.print(" | InTemp: ");
+    Serial.println(ds18b20_temp);
 
 }
