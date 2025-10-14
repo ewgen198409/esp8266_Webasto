@@ -810,8 +810,8 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
                 </div>
                 <div class="ota-manual">
                     <h3>Ручное обновление</h3>
-                    <p>Или перейдите по ссылке для стандартного обновления:</p>
-                    <button onclick="window.open('/update', '_blank')" class="btn btn-warning">
+                    <p>Или скачайте обновление с github:</p>
+                    <button onclick="window.open('https://github.com/ewgen198409/esp8266_Webasto/releases', '_blank')" class="btn btn-warning">
                         📤 Открыть страницу обновления
                     </button>
                 </div>
