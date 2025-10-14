@@ -478,6 +478,104 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
         .hover-blue:hover {
             color: #93c5fd;
         }
+
+        /* Стили для прогресс бара */
+        .progress-container {
+            width: 100%;
+            height: 20px;
+            background-color: #4a5568;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+            display: none;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #4299e1, #3182ce);
+            width: 0%;
+            text-align: center;
+            line-height: 20px;
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+            transition: width 0.3s ease;
+        }
+
+        .status-message {
+            margin: 10px 0;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .status-info {
+            background-color: #2d3748;
+            color: #e2e8f0;
+            border: 1px solid #4a5568;
+        }
+
+        .status-success {
+            background-color: #2f855a;
+            color: white;
+        }
+
+        .status-error {
+            background-color: #c53030;
+            color: white;
+        }
+
+        .status-warning {
+            background-color: #d69e2e;
+            color: white;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .file-label {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #4a5568;
+            color: #e2e8f0;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .file-label:hover {
+            background-color: #2d3748;
+        }
+
+        .btn-success {
+            background-color: #38a169;
+            background-image: linear-gradient(to bottom right, #38a169, #2f855a);
+            color: white;
+        }
+
+        .btn-success:hover {
+            background-color: #2f855a;
+            background-image: linear-gradient(to bottom right, #2f855a, #22543d);
+        }
+
+        .btn-warning {
+            background-color: #d69e2e;
+            background-image: linear-gradient(to bottom right, #d69e2e, #b7791f);
+            color: white;
+        }
+
+        .btn-warning:hover {
+            background-color: #b7791f;
+            background-image: linear-gradient(to bottom right, #b7791f, #975a16);
+        }
+
+        .ota-manual a {
+            display: block;
+            width: 100%;
+            text-decoration: none;
+        }
     </style>
 </head>
 <body>
@@ -709,16 +807,13 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
                     <button id="updateBtn" class="btn btn-success" disabled>
                         Начать обновление
                     </button>
-                    <button id="checkUpdateBtn" class="btn btn-secondary">
-                        Проверить обновления
-                    </button>
                 </div>
                 <div class="ota-manual">
                     <h3>Ручное обновление</h3>
                     <p>Или перейдите по ссылке для стандартного обновления:</p>
-                    <a href="/update" target="_blank" class="btn btn-warning">
+                    <button onclick="window.open('/update', '_blank')" class="btn btn-warning">
                         📤 Открыть страницу обновления
-                    </a>
+                    </button>
                 </div>
             </div>
         </div>
@@ -738,14 +833,13 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
             const progressContainer = document.getElementById('progressContainer');
             const progressBar = document.getElementById('progressBar');
             const statusMessage = document.getElementById('statusMessage');
-            const checkUpdateBtn = document.getElementById('checkUpdateBtn');
             const fwVersion = document.getElementById('fwVersion');
             const fwDate = document.getElementById('fwDate');
             const fwIP = document.getElementById('fwIP');
 
             // Загрузка информации о прошивке
             function loadFirmwareInfo() {
-                fwVersion.textContent = '1.0.0'; // Используем переменную FIRMWARE_VERSION из кода ESP
+                fwVersion.textContent = '1.0.0';                        // Используем переменную FIRMWARE_VERSION из кода ESP
                 fwDate.textContent = new Date().toLocaleDateString();
                 fwIP.textContent = window.location.hostname || '192.168.10.10';
             }
@@ -767,82 +861,7 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
                 }
             });
 
-            // Кнопка проверки обновлений
-            checkUpdateBtn.addEventListener('click', function() {
-                checkForUpdates();
-            });
 
-            // Функция проверки обновлений на GitHub
-            function checkForUpdates() {
-                showStatus('Проверка обновлений на GitHub...', 'info');
-
-                fetch('https://api.github.com/repos/ewgen198409/esp8266_Webasto/releases/latest')
-                    .then(response => {
-                        if (!response.ok) {
-                            throw new Error('Не удалось получить информацию о релизах');
-                        }
-                        return response.json();
-                    })
-                    .then(data => {
-                        // Получаем текущую версию из данных устройства
-                        const currentVersion = fwVersion.textContent || '1.0.0';
-                        const latestVersion = data.tag_name.replace('v', ''); // Убираем 'v' из тега
-
-                        if (latestVersion > currentVersion) {
-                            showStatus(`Найдена новая версия: ${latestVersion}. Скачивание...`, 'info');
-
-                            // Ищем firmware.bin в assets
-                            const firmwareAsset = data.assets.find(asset => asset.name === 'firmware.bin');
-                            if (firmwareAsset) {
-                                downloadAndUpdate(firmwareAsset.browser_download_url, latestVersion);
-                            } else {
-                                showStatus('Ошибка: файл firmware.bin не найден в релизе.', 'error');
-                            }
-                        } else {
-                            showStatus('У вас установлена последняя версия.', 'success');
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Ошибка при проверке обновлений:', error);
-                        showStatus('Ошибка при проверке обновлений: ' + error.message, 'error');
-                    });
-            }
-
-            // Функция скачивания и обновления прошивки
-            function downloadAndUpdate(downloadUrl, version) {
-                fetch(downloadUrl)
-                    .then(response => {
-                        if (!response.ok) {
-                            throw new Error('Не удалось скачать файл прошивки');
-                        }
-                        return response.blob();
-                    })
-                    .then(blob => {
-                        // Создаем FormData для отправки файла
-                        const formData = new FormData();
-                        formData.append('firmware', blob, 'firmware.bin');
-
-                        // Отправляем файл на устройство
-                        return fetch('/update', {
-                            method: 'POST',
-                            body: formData
-                        });
-                    })
-                    .then(response => {
-                        if (response.ok) {
-                            showStatus(`✅ Прошивка версии ${version} успешно загружена! Устройство перезагружается...`, 'success');
-                            setTimeout(() => {
-                                window.location.reload();
-                            }, 5000);
-                        } else {
-                            throw new Error('Ошибка при загрузке прошивки на устройство');
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Ошибка при обновлении:', error);
-                        showStatus('Ошибка при обновлении: ' + error.message, 'error');
-                    });
-            }
 
             // Кнопка начала обновления
             updateBtn.addEventListener('click', function() {
