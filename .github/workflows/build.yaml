@@ -11,6 +11,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
     - name: Checkout code
@@ -50,27 +52,18 @@ jobs:
         git push -f origin $TAG_NAME
 
     - name: Create Release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      uses: softprops/action-gh-release@v1
       with:
         tag_name: ${{ env.TAG_NAME }}
-        release_name: Release ${{ env.TAG_NAME }}
+        name: Release ${{ env.TAG_NAME }}
         body: |
           Автоматический релиз firmware версии ${{ env.TAG_NAME }}.
 
           ## Изменения
           - Обновлена версия прошивки до ${{ env.TAG_NAME }}
+        files: |
+          .pio/build/nodemcuv2/firmware.bin
         draft: false
         prerelease: false
-
-    - name: Upload firmware
-      uses: actions/upload-release-asset@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: .pio/build/nodemcuv2/firmware.bin
-        asset_name: firmware.bin
-        asset_content_type: application/octet-stream
