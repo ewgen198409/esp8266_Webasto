@@ -32,6 +32,7 @@ jobs:
         VERSION=$(date +%Y%m%d.%H%M%S)
         echo "version=$VERSION" >> $GITHUB_OUTPUT
         echo "VERSION=$VERSION" >> $GITHUB_ENV
+        echo "VERSION=$VERSION" >> $GITHUB_STATE
 
     - name: Create tag
       run: |
