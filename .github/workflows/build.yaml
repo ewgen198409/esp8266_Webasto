@@ -33,7 +33,7 @@ jobs:
     - name: Update firmware version in code
       run: |
         VERSION="${{ inputs.version }}"
-        sed -i "s/const char\* FIRMWARE_VERSION = \".*\";/const char* FIRMWARE_VERSION = \"$VERSION\";/" src/wifi.ino
+        sed -i 's/const char\* FIRMWARE_VERSION = ".*";/const char* FIRMWARE_VERSION = "'"$VERSION"'";/' src/wifi.ino
         echo "Updated FIRMWARE_VERSION to $VERSION"
 
     - name: Build project

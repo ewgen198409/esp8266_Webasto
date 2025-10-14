@@ -839,7 +839,7 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
 
             // Загрузка информации о прошивке
             function loadFirmwareInfo() {
-                fwVersion.textContent = '1.0.0';                        // Используем переменную FIRMWARE_VERSION из кода ESP
+                // fwVersion будет обновлен через WebSocket
                 fwDate.textContent = new Date().toLocaleDateString();
                 fwIP.textContent = window.location.hostname || '192.168.10.10';
             }
@@ -1146,6 +1146,11 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
                 document.getElementById('hourlyFuelConsumption').textContent = data.fuel_consumption_per_hour.toFixed(2);
             } else {
                 document.getElementById('hourlyFuelConsumption').textContent = '--';
+            }
+
+            // Firmware Version Display
+            if (data.firmware_version) {
+                document.getElementById('fwVersion').textContent = data.firmware_version;
             }
         }
 
