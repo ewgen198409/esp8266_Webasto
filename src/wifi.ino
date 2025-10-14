@@ -11,7 +11,7 @@
 extern bool loggingEnabled;
 
 // Версия прошивки
-const char* FIRMWARE_VERSION = "1.0.0";
+const char* FIRMWARE_VERSION = "1.1.0";
 
 // Имя хоста для mDNS
 const char* mdns_hostname = "espwebasto";
