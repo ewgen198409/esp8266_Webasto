@@ -68,18 +68,52 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Управление Webasto</title>
-    <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #1a202c; /* Темный фон */
-            color: #e2e8f0; /* Светлый текст */
+            background-color: #1a202c;
+            color: #e2e8f0;
+            margin: 0;
+            padding: 16px;
+        }
+		.container {
+			max-width: 768px;
+			margin-left: auto;
+			margin-right: auto;
+			display: flex;
+			flex-direction: column;
+			/* УБРАТЬ gap: 24px; */
+		}
+
+		/* Создаем отдельный контейнер для вкладок без отступов */
+		.tabs-container {
+			display: flex;
+			flex-direction: column;
+		}
+        h1 {
+            font-size: 2rem;
+            font-weight: bold;
+            text-align: center;
+            color: #60a5fa;
+            margin-bottom: 32px;
+        }
+        h2 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+        h3 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 12px;
+            margin-top: 24px;
         }
         .card {
-            background-color: #2d3748; /* Темно-серый фон для карточек */
-            border-radius: 0.75rem; /* Закругленные углы */
+            background-color: #2d3748;
+            border-radius: 0.75rem;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            padding: 24px;
         }
         .btn {
             padding: 0.75rem 1.5rem;
@@ -90,10 +124,10 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            /* Добавлены стили для объемности и эффекта нажатия */
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.15);
             transform: translateY(0);
-            border: none; /* Убедимся, что нет стандартных границ */
+            border: none;
+            width: 100%;
         }
         .btn:hover {
             box-shadow: 0 6px 10px rgba(0, 0, 0, 0.4), 0 2px 5px rgba(0, 0, 0, 0.2);
@@ -103,8 +137,8 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
             transform: translateY(2px);
         }
         .btn-primary {
-            background-color: #4299e1; /* Синий */
-            background-image: linear-gradient(to bottom right, #4299e1, #3182ce); /* Градиент для объемности */
+            background-color: #4299e1;
+            background-image: linear-gradient(to bottom right, #4299e1, #3182ce);
             color: white;
         }
         .btn-primary:hover {
@@ -112,8 +146,8 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
             background-image: linear-gradient(to bottom right, #3182ce, #2c5282);
         }
         .btn-danger {
-            background-color: #e53e3e; /* Красный */
-            background-image: linear-gradient(to bottom right, #e53e3e, #c53030); /* Градиент для объемности */
+            background-color: #e53e3e;
+            background-image: linear-gradient(to bottom right, #e53e3e, #c53030);
             color: white;
         }
         .btn-danger:hover {
@@ -121,52 +155,68 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
             background-image: linear-gradient(to bottom right, #c53030, #9b2c2c);
         }
         .btn-secondary {
-            background-color: #4a5568; /* Серый */
-            background-image: linear-gradient(to bottom right, #4a5568, #2d3748); /* Градиент для объемности */
+            background-color: #4a5568;
+            background-image: linear-gradient(to bottom right, #4a5568, #2d3748);
             color: white;
         }
         .btn-secondary:hover {
             background-color: #2d3748;
             background-image: linear-gradient(to bottom right, #2d3748, #1a202c);
         }
-        .input-field {
-            background-color: #4a5568;
-            border: 1px solid #6b7280;
-            border-radius: 0.5rem;
-            padding: 0.5rem 0.75rem;
-            color: #e2e8f0;
-            width: 100%;
-        }
-        .slider {
-            -webkit-appearance: none;
-            width: 100%;
-            height: 8px;
-            border-radius: 5px;
-            background: #6b7280;
-            outline: none;
-            opacity: 0.7;
-            -webkit-transition: .2s;
-            transition: opacity .2s;
-        }
-        .slider:hover {
-            opacity: 1;
-        }
-        .slider::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            appearance: none;
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            background: #4299e1;
-            cursor: pointer;
-        }
-        .slider::-moz-range-thumb {
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            background: #4299e1;
-            cursor: pointer;
-        }
+		.input-field {
+			background-color: #4a5568;
+			border: 1px solid #6b7280;
+			border-radius: 0.5rem;
+			padding: 0.75rem 1rem; /* Увеличил padding */
+			color: #e2e8f0;
+			width: 100%;
+			margin-top: 4px;
+			font-size: 1rem; /* Добавил размер шрифта */
+			box-sizing: border-box; /* Важно для правильного расчета ширины */
+		}
+
+		/* Специфичные стили для number input */
+		.input-field[type="number"] {
+			min-width: 120px; /* Минимальная ширина для числовых полей */
+		}
+		/* Улучшаем внешний вид слайдеров */
+		.slider {
+			-webkit-appearance: none;
+			width: 100%;
+			height: 10px; /* Увеличил высоту */
+			border-radius: 5px;
+			background: #4a5568;
+			outline: none;
+			opacity: 0.9;
+			-webkit-transition: .2s;
+			transition: opacity .2s;
+			margin-top: 8px;
+			margin-bottom: 8px;
+		}
+
+		.slider:hover {
+			opacity: 1;
+		}
+
+		.slider::-webkit-slider-thumb {
+			-webkit-appearance: none;
+			appearance: none;
+			width: 22px; /* Увеличил размер бегунка */
+			height: 22px;
+			border-radius: 50%;
+			background: #4299e1;
+			cursor: pointer;
+			border: 2px solid #ffffff;
+		}
+
+		.slider::-moz-range-thumb {
+			width: 22px;
+			height: 22px;
+			border-radius: 50%;
+			background: #4299e1;
+			cursor: pointer;
+			border: 2px solid #ffffff;
+		}
         .status-indicator {
             width: 12px;
             height: 12px;
@@ -174,260 +224,444 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
             display: inline-block;
             margin-left: 8px;
         }
-        .status-on { background-color: #48bb78; } /* Зеленый */
-        .status-off { background-color: #e53e3e; } /* Красный */
-        .status-warn { background-color: #ecc94b; } /* Желтый */
+        .status-on { background-color: #48bb78; }
+        .status-off { background-color: #e53e3e; }
+        .status-warn { background-color: #ecc94b; }
         .glow-icon {
             width: 24px;
             height: 24px;
             vertical-align: middle;
             margin-left: 8px;
         }
-        .glow-icon.on { fill: #FFD700; } /* Золотой цвет для включенной свечи */
-        .glow-icon.off { fill: #6B7280; } /* Серый цвет для выключенной свечи */
+        .glow-icon.on { fill: #FFD700; }
+        .glow-icon.off { fill: #6B7280; }
 
-        /* Стили для вкладок (обновлено для вида "закладок") */
-        .tab-buttons {
+        /* ИСПРАВЛЕННЫЕ СТИЛИ ДЛЯ ВКЛАДОК - убран отступ */
+		.tab-buttons {
+			display: flex;
+			justify-content: flex-start;
+			margin-bottom: 0;
+			overflow-x: auto;
+			-webkit-overflow-scrolling: touch;
+			scrollbar-width: none;
+			-ms-overflow-style: none;
+		}
+		.tab-buttons::-webkit-scrollbar {
+			display: none;
+		}
+		.tab-button {
+			flex-shrink: 0;
+			padding: 0.5rem 0.8rem;
+			text-align: center;
+			font-weight: 600;
+			cursor: pointer;
+			transition: all 0.2s ease-in-out;
+			color: #a0aec0;
+			background-color: #222b37;
+			border-top-left-radius: 0.4rem;
+			border-top-right-radius: 0.4rem;
+			border: 1px solid #3a4352;
+			border-bottom: 1px solid #3a4352;
+			margin-right: 0.1rem;
+			position: relative;
+			z-index: 0;
+			font-size: 0.85rem;
+		}
+		.tab-button:hover {
+			background-color: #3182ce;
+			color: white;
+		}
+		.tab-button.active {
+			background-color: #2d3748;
+			color: white;
+			border: 1px solid #4a5568;
+			border-bottom: 1px solid #2d3748;
+			z-index: 1;
+		}
+		.tab-content.card {
+			margin-top: -1px; /* Отрицательный margin для перекрытия границы */
+			border-radius: 0 0 0.75rem 0.75rem;
+			border: 1px solid #4a5568;
+			border-top: none; /* Убираем верхнюю границу */
+		}
+		.tab-content {
+			display: none;
+		}
+		.tab-content.active {
+			display: block;
+		}
+
+        /* Простые CSS классы без Tailwind */
+        .control-section {
             display: flex;
-            justify-content: flex-start; /* Выравнивание вкладок по левому краю */
-            margin-bottom: -5; /* Убираем отступ, чтобы вкладки прилегали к контенту */
-            overflow-x: auto; /* Добавляем горизонтальную прокрутку */
-            -webkit-overflow-scrolling: touch; /* Для плавности на iOS */
-            scrollbar-width: none; /* Скрыть полосу прокрутки для Firefox */
-            -ms-overflow-style: none;  /* Скрыть полосу прокрутки для IE/Edge */
+            flex-direction: column;
+            gap: 16px;
         }
-        .tab-buttons::-webkit-scrollbar { /* Скрыть полосу прокрутки для Chrome/Safari */
-            display: none;
-        }
-        .tab-button {
-            flex-shrink: 0; /* Важно, чтобы вкладки не сжимались */
-            padding: 0.4rem 0.8rem; /* Уменьшаем padding для меньшего размера */
-            text-align: center;
+        
+        .control-section h2 {
+            font-size: 1.25rem;
             font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s ease-in-out, transform 0.2s ease-in-out; /* Добавляем transition для transform */
-            color: #a0aec0; /* Светло-серый текст для неактивных вкладок */
-            background-color: #222b37; /* Темный фон для неактивных вкладок */
-            border-top-left-radius: 0.4rem; /* Немного меньше радиус для меньших вкладок */
-            border-top-right-radius: 0.4rem; /* Немного меньше радиус для меньших вкладок */
-            border: 1px solid #3a4352; /* Более темная граница для неактивных вкладок */
-            border-bottom: 1px solid #2d3748; /* Нижняя граница неактивной вкладки совпадает с фоном активной области */
-            margin-right: 0.1rem; /* Еще меньший отступ между вкладками */
-            position: relative;
-            z-index: 0; /* Неактивные вкладки находятся сзади */
-            font-size: 0.85rem; /* Немного уменьшаем размер шрифта */
-            transform: translateY(3px); /* Опускаем неактивные вкладки */
+            margin-bottom: 12px;
+            margin-top: 0;
         }
-        .tab-button:hover {
-            background-color: #3182ce; /* Эффект при наведении */
-            color: white;
-            transform: translateY(0); /* Поднимаем при наведении */
-            border-bottom-color: #3182ce; /* Граница при наведении */
+        
+        .button-row {
+            display: flex;
+            gap: 16px;
         }
-        .tab-button.active {
-            background-color: #2d3748; /* Фон активной вкладки соответствует фону карточки контента */
-            color: white;
-            border-bottom: none; /* УДАЛЕНО: Чтобы не было никаких видимых границ */
-            z-index: 1; /* Активная вкладка находится сверху */
-            padding-top: 0.5rem; /* Немного больший отступ сверху для активной вкладки */
-            padding-bottom: 0.4rem; /* Сохраняем нижний отступ, чтобы выглядело поднятым */
-            margin-bottom: -1px; /* Убираем margin-bottom для активной вкладки, чтобы она прилегала */
-            transform: translateY(0); /* Активная вкладка не смещена */
-            border-color: #4a5568; /* Стандартная граница для активной вкладки */
-            border-left: 1px solid #4a5568; /* Добавлено для сохранения левой границы */
-            border-right: 1px solid #4a5568; /* Добавлено для сохранения правой границы */
-            border-top: 1px solid #4a5568; /* Добавлено для сохранения верхней границы */
+        
+        .button-row .btn {
+            flex: 1;
         }
-        /* Корректировка верхнего отступа карточки контента для выравнивания с вкладками */
-        .tab-content.card {
-            margin-top: -5px; /* Убираем верхний отступ, поднимая контент на 1px */
-            border-top-left-radius: 0.0rem; /* Закругляем верхний левый угол карточки */
-            border-top-right-radius: 0.0rem; /* Закругляем верхний правый угол карточки */
-            border-left: 1px solid #4a5568; /* Добавляем общую границу для карточки */
-            border-right: 1px solid #4a5568;
-            border-bottom: 1px solid #4a5568;
-            border-top: none; /* Явно убираем верхнюю границу */
+        
+        .status-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 16px;
         }
-        /* Скрываем все вкладки по умолчанию и добавляем плавный переход */
-        .tab-content {
-            display: none;
-            opacity: 0;
-            transition: opacity 0.3s ease-in-out;
+        
+        @media (min-width: 768px) {
+            .status-grid {
+                grid-template-columns: 1fr 1fr;
+            }
         }
-        /* Показываем активную вкладку */
-        .tab-content.active {
+        
+        .status-item {
+            margin-bottom: 12px;
+            font-size: 1.125rem;
+        }
+        
+        .status-label {
+            font-weight: bold;
+            margin-right: 8px;
+        }
+        
+        .settings-section {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        
+        .setting-item {
+            margin-bottom: 16px;
+        }
+        
+        .setting-label {
             display: block;
-            opacity: 1;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #a0aec0;
+            margin-bottom: 4px;
+        }
+        
+        .setting-value {
+            color: #60a5fa;
+            font-weight: bold;
+            margin-left: 8px;
+        }
+        
+        .buttons-row {
+            display: flex;
+            gap: 16px;
+        }
+        
+        .log-section {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        
+        .debug-console {
+            background-color: #2d3748;
+            padding: 12px;
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
+            height: 24rem;
+            overflow-y: scroll;
+            word-break: break-word;
+        }
+        
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        
+        .checkbox-item input {
+            margin-right: 8px;
+        }
+        
+        .wifi-section {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        
+        .wifi-info {
+            margin-bottom: 16px;
+        }
+        
+        .wifi-info-item {
+            font-size: 1.125rem;
+            margin-bottom: 8px;
+        }
+        
+        .fuel-section {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        
+        .fuel-info-item {
+            font-size: 1.125rem;
+            margin-bottom: 8px;
+        }
+        
+        .text-red {
+            color: #ef4444;
+        }
+        
+        .text-green {
+            color: #22c55e;
+        }
+        
+        .text-yellow {
+            color: #fcd34d;
+        }
+        
+        .text-blue {
+            color: #60a5fa;
+        }
+        
+        .font-bold {
+            font-weight: bold;
+        }
+        
+        .mb-4 {
+            margin-bottom: 16px;
+        }
+        
+        .mt-6 {
+            margin-top: 24px;
+        }
+        
+        .w-full {
+            width: 100%;
+        }
+        
+        .list-disc {
+            list-style-type: disc;
+            padding-left: 20px;
+        }
+        
+        .cursor-pointer {
+            cursor: pointer;
+        }
+        
+        .hover-blue:hover {
+            color: #93c5fd;
         }
     </style>
 </head>
-<body class="p-4">
-    <div class="max-w-3xl mx-auto space-y-6"> <!-- Уменьшен max-width для уменьшения размера страницы -->
-        <h1 class="text-3xl font-bold text-center text-blue-400 mb-8">Управление Webasto</h1>
+<body>
+	<div class="container">
+		<h1>Управление Webasto</h1>
 
-        <!-- Кнопки вкладок -->
-        <div class="tab-buttons">
-            <div class="tab-button active" onclick="openTab(event, 'controlStatus')">Управление и статус</div>
-            <div class="tab-button" onclick="openTab(event, 'settings')">Настройки</div>
-            <div class="tab-button" onclick="openTab(event, 'log')">Лог</div>
-            <div class="tab-button" onclick="openTab(event, 'wifiSettings')">Wi-Fi</div>
-            <div class="tab-button" onclick="openTab(event, 'fuelConsumption')">Расход топлива</div>
-        </div>
+		<!-- ОБЕРТКА ДЛЯ ВКЛАДОК БЕЗ ОТСТУПОВ -->
+		<div class="tabs-container">
+			<!-- Кнопки вкладок -->
+			<div class="tab-buttons">
+				<div class="tab-button active" onclick="openTab(event, 'controlStatus')">Управление и статус</div>
+				<div class="tab-button" onclick="openTab(event, 'settings')">Настройки</div>
+				<div class="tab-button" onclick="openTab(event, 'log')">Лог</div>
+				<div class="tab-button" onclick="openTab(event, 'wifiSettings')">Wi-Fi</div>
+				<div class="tab-button" onclick="openTab(event, 'fuelConsumption')">Расход топлива</div>
+			</div>
 
         <!-- Содержимое вкладки "Управление и статус" -->
-        <div id="controlStatus" class="tab-content active card p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-                <h2 class="text-xl font-semibold mb-3">Текущий статус</h2>
-                <p class="text-sm text-gray-400 mb-2">Обновляется каждые 1 секунду</p>
-                <div class="flex items-center text-lg mb-2">
-                    Состояние: <span id="statusMessage" class="ml-2 font-bold">Ожидание...</span>
-                    <span id="burnStatusIndicator" class="status-indicator status-off"></span>
+        <div id="controlStatus" class="tab-content active card">
+            <div class="status-grid">
+                <div>
+                    <h2>Текущий статус</h2>
+                    
+                    <div class="status-item">
+                        Состояние: <span id="statusMessage" class="font-bold">Ожидание...</span>
+                        <span id="burnStatusIndicator" class="status-indicator status-off"></span>
+                    </div>
+                    <div class="status-item">Температура выхлопа: <span id="exhaustTemp" class="font-bold">--</span> &deg;C</div>
+                    <div class="status-item">Скорость вентилятора: <span id="fanSpeed" class="font-bold">--</span> %</div>
+                    <div class="status-item">Расход топлива: <span id="fuelRateHz" class="font-bold">--</span> Гц</div>
+                    <div class="status-item">
+                        Свеча:
+                        <svg id="glowPlugIcon" class="glow-icon off" viewBox="0 0 24 24" fill="currentColor" stroke="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 2L9 11H3L13 22L15 13H21L11 2Z" />
+                        </svg>
+                    </div>
+                    <div class="status-item">Режим горения: <span id="burnMode" class="font-bold">--</span></div>
+                    <div class="status-item">Попытка запуска: <span id="attempt" class="font-bold">--</span></div>
+                    <div class="status-item">Ошибки: <span id="webastoFail" class="font-bold">Нет</span></div>
+                    <div class="status-item">Текущий режим: <span id="currentState" class="font-bold">--</span></div>
+                    <div class="status-item">Прокачка топлива: <span id="fuelPumpingActive" class="font-bold">Нет</span></div>
                 </div>
-                <div class="text-lg mb-2">Температура выхлопа: <span id="exhaustTemp" class="font-bold">--</span> &deg;C</div>
-                <div class="text-lg mb-2">Скорость вентилятора: <span id="fanSpeed" class="font-bold">--</span> %</div>
-                <div class="text-lg mb-2">Расход топлива: <span id="fuelRateHz" class="font-bold">--</span> Гц</div>
-                <div class="flex items-center text-lg mb-2">
-                    Свеча: 
-                    <svg id="glowPlugIcon" class="glow-icon off" viewBox="0 0 24 24" fill="currentColor" stroke="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M12 2L9 11H3L13 22L15 13H21L11 2Z" />
-                    </svg>
+                <div class="control-section">
+                    <h2>Управление</h2>
+                    <button id="toggleBurnBtn" class="btn btn-primary">Включить / Выключить</button>
+                    <div class="button-row">
+                        <button id="downBtn" class="btn btn-secondary">Вниз (Режим)</button>
+                        <button id="upBtn" class="btn btn-secondary">Вверх (Режим)</button>
+                    </div>
+                    <button id="fuelPumpBtn" class="btn btn-secondary">Прокачка топлива</button>
+                    <button id="clearFailBtn" class="btn btn-danger">Сбросить ошибку</button>
                 </div>
-                <div class="text-lg mb-2">Режим горения: <span id="burnMode" class="font-bold">--</span></div>
-                <div class="text-lg mb-2">Попытка запуска: <span id="attempt" class="font-bold">--</span></div>
-                <div class="text-lg mb-2">Ошибки: <span id="webastoFail" class="font-bold">Нет</span></div>
-                <div class="text-lg mb-2">Текущий режим: <span id="currentState" class="font-bold">--</span></div>
-                <div class="text-lg mb-2">Прокачка топлива: <span id="fuelPumpingActive" class="font-bold">Нет</span></div>
-            </div>
-            <div class="flex flex-col space-y-4">
-                <h2 class="text-xl font-semibold mb-3">Управление</h2>
-                <button id="toggleBurnBtn" class="btn btn-primary">Включить / Выключить</button>
-                <div class="grid grid-cols-2 gap-4">
-                    <button id="upBtn" class="btn btn-secondary">Вниз (Режим)</button>
-                    <button id="downBtn" class="btn btn-secondary">Вверх (Режим)</button>
-                </div>
-                <button id="fuelPumpBtn" class="btn btn-secondary">Прокачка топлива</button>
-                <button id="clearFailBtn" class="btn btn-danger">Сбросить ошибку</button>
             </div>
         </div>
 
-        <!-- Содержимое вкладки "Настройки" -->
-        <div id="settings" class="tab-content card p-6">
-            <h2 class="text-xl font-semibold mb-4">Настройки</h2>
-            <div class="space-y-4">
-                <div>
-                    <label for="pumpSize" class="block text-sm font-medium text-gray-400">Размер насоса:</label>
-                    <input type="number" id="pumpSize" class="input-field mt-1" min="10" max="100">
-                </div>
-                <div>
-                    <label for="heaterTarget" class="block text-sm font-medium text-gray-400">Целевая температура нагревателя (&deg;C):</label>
-                    <input type="range" id="heaterTarget" class="slider mt-1" min="150" max="250" step="1">
-                    <span id="heaterTargetValue" class="text-blue-300 font-bold ml-2"></span>
-                </div>
-                <div>
-                    <label for="heaterMin" class="block text-sm font-medium text-gray-400">Минимальная температура нагревателя (&deg;C):</label>
-                    <input type="range" id="heaterMin" class="slider mt-1" min="140" max="240" step="1">
-                    <span id="heaterMinValue" class="text-blue-300 font-bold ml-2"></span>
-                </div>
-                <div>
-                    <label for="heaterOverheat" class="block text-sm font-medium text-gray-400">Температура перегрева (&deg;C):</label>
-                    <input type="range" id="heaterOverheat" class="slider mt-1" min="200" max="300" step="1">
-                    <span id="heaterOverheatValue" class="text-blue-300 font-bold ml-2"></span>
-                </div>
-                <div>
-                    <label for="heaterWarning" class="block text-sm font-medium text-gray-400">Температура предупреждения (&deg;C):</label>
-                    <input type="range" id="heaterWarning" class="slider mt-1" min="180" max="280" step="1">
-                    <span id="heaterWarningValue" class="text-blue-300 font-bold ml-2"></span>
-                </div>
-                <div>
-                    <label for="maxPwmFan" class="block text-sm font-medium text-gray-400">Макс. ШИМ вентилятора (0-255): <span id="maxPwmFanPercent" class="text-blue-300 font-bold"></span>%</label>
-                    <input type="number" id="maxPwmFan" class="input-field mt-1" min="0" max="255">
-                </div>
-                <div>
-                    <label for="glowBrightness" class="block text-sm font-medium text-gray-400">Яркость свечи накаливания (0-255): <span id="glowBrightnessPercent" class="text-blue-300 font-bold"></span>%</label>
-                    <input type="number" id="glowBrightness" class="input-field mt-1" min="0" max="255">
-                </div>
-                <div>
-                    <label for="glowFadeInDuration" class="block text-sm font-medium text-gray-400">Время розжига свечи (мс):</label>
-                    <input type="number" id="glowFadeInDuration" class="input-field mt-1" min="0" max="60000">
-                </div>
-                <div>
-                    <label for="glowFadeOutDuration" class="block text-sm font-medium text-gray-400">Время затухания свечи (мс):</label>
-                    <input type="number" id="glowFadeOutDuration" class="input-field mt-1" min="0" max="60000">
-                </div>
-                <div class="flex space-x-4"> <!-- Изменено на flex для расположения в ряд -->
-                    <button id="saveSettingsBtn" class="btn btn-primary">Сохранить настройки</button>
-                    <button id="resetSettingsBtn" class="btn btn-danger">Сбросить настройки</button>
-                </div>
-                <button id="loadSettingsBtn" class="btn btn-secondary w-full">Загрузить настройки</button> <!-- Кнопка загрузки теперь занимает всю ширину -->
-            </div>
-        </div>
+		<!-- Содержимое вкладки "Настройки" -->
+		<div id="settings" class="tab-content card">
+			<h2>Настройки</h2>
+			<div class="settings-section">
+				<div class="setting-item">
+					<label for="pumpSize" class="setting-label">Размер насоса:</label>
+					<input type="number" id="pumpSize" class="input-field" min="10" max="100" placeholder="10-100">
+				</div>
+				
+				<div class="setting-item">
+					<label for="heaterTarget" class="setting-label">
+						Целевая температура нагревателя (°C): 
+						<span id="heaterTargetValue" class="setting-value">150</span>
+					</label>
+					<input type="range" id="heaterTarget" class="slider" min="150" max="250" step="1" value="150">
+				</div>
+				
+				<div class="setting-item">
+					<label for="heaterMin" class="setting-label">
+						Минимальная температура нагревателя (°C): 
+						<span id="heaterMinValue" class="setting-value">140</span>
+					</label>
+					<input type="range" id="heaterMin" class="slider" min="140" max="240" step="1" value="140">
+				</div>
+				
+				<div class="setting-item">
+					<label for="heaterOverheat" class="setting-label">
+						Температура перегрева (°C): 
+						<span id="heaterOverheatValue" class="setting-value">200</span>
+					</label>
+					<input type="range" id="heaterOverheat" class="slider" min="200" max="300" step="1" value="200">
+				</div>
+				
+				<div class="setting-item">
+					<label for="heaterWarning" class="setting-label">
+						Температура предупреждения (°C): 
+						<span id="heaterWarningValue" class="setting-value">180</span>
+					</label>
+					<input type="range" id="heaterWarning" class="slider" min="180" max="280" step="1" value="180">
+				</div>
+				
+				<div class="setting-item">
+					<label for="maxPwmFan" class="setting-label">
+						Макс. ШИМ вентилятора (0-255): 
+						<span id="maxPwmFanPercent" class="setting-value">0%</span>
+					</label>
+					<input type="number" id="maxPwmFan" class="input-field" min="0" max="255" placeholder="0-255">
+				</div>
+				
+				<div class="setting-item">
+					<label for="glowBrightness" class="setting-label">
+						Яркость свечи накаливания (0-255): 
+						<span id="glowBrightnessPercent" class="setting-value">0%</span>
+					</label>
+					<input type="number" id="glowBrightness" class="input-field" min="0" max="255" placeholder="0-255">
+				</div>
+				
+				<div class="setting-item">
+					<label for="glowFadeInDuration" class="setting-label">Время розжига свечи (мс):</label>
+					<input type="number" id="glowFadeInDuration" class="input-field" min="0" max="60000" placeholder="0-60000">
+				</div>
+				
+				<div class="setting-item">
+					<label for="glowFadeOutDuration" class="setting-label">Время затухания свечи (мс):</label>
+					<input type="number" id="glowFadeOutDuration" class="input-field" min="0" max="60000" placeholder="0-60000">
+				</div>
+				
+				<div class="buttons-row">
+					<button id="saveSettingsBtn" class="btn btn-primary">Сохранить настройки</button>
+					<button id="resetSettingsBtn" class="btn btn-danger">Сбросить настройки</button>
+				</div>
+				<button id="loadSettingsBtn" class="btn btn-secondary w-full">Загрузить настройки</button>
+			</div>
+		</div>
 
         <!-- Содержимое вкладки "Лог" -->
-        <div id="log" class="tab-content card p-6">
-            <h2 class="text-xl font-semibold mb-4">Лог устройства</h2>
-            <div class="mb-4">
-                <input type="checkbox" id="enableLoggingCheckbox" class="mr-2">
-                <label for="enableLoggingCheckbox" class="text-lg">Включить лог</label>
+        <div id="log" class="tab-content card">
+            <h2>Лог устройства</h2>
+            <div class="checkbox-item">
+                <input type="checkbox" id="enableLoggingCheckbox">
+                <label for="enableLoggingCheckbox">Включить лог</label>
             </div>
-            <div id="debugConsole" class="bg-gray-800 p-3 rounded-md text-sm h-96 overflow-y-scroll break-words">
-                Подключение к устройству...
+            <div class="log-section">
+                <div id="debugConsole" class="debug-console">
+                    Подключение к устройству...
+                </div>
             </div>
         </div>
 
         <!-- Содержимое вкладки "Wi-Fi" -->
-        <div id="wifiSettings" class="tab-content card p-6">
-            <h2 class="text-xl font-semibold mb-4">Настройки Wi-Fi</h2>
-            <div class="space-y-4">
-                <div class="text-lg mb-2">Статус подключения: <span id="wifiStatus" class="font-bold">--</span></div>
-                <div class="text-lg mb-2">SSID: <span id="wifiSSID" class="font-bold">--</span></div>
-                <div class="text-lg mb-2">IP Адрес: <span id="wifiIP" class="font-bold">--</span></div>
-                <div class="flex space-x-4"> <!-- Добавлен flex контейнер с горизонтальным отступом -->
+        <div id="wifiSettings" class="tab-content card">
+            <h2>Настройки Wi-Fi</h2>
+            <div class="wifi-section">
+                <div class="wifi-info">
+                    <div class="wifi-info-item">Статус подключения: <span id="wifiStatus" class="font-bold">--</span></div>
+                    <div class="wifi-info-item">SSID: <span id="wifiSSID" class="font-bold">--</span></div>
+                    <div class="wifi-info-item">IP Адрес: <span id="wifiIP" class="font-bold">--</span></div>
+                </div>
+                <div class="buttons-row">
                     <button id="resetWifiBtn" class="btn btn-danger">Сбросить настройки Wi-Fi</button>
                     <button id="rebootEspBtn" class="btn btn-secondary">Перезагрузить ESP</button>
                 </div>
             </div>
 
-            <h3 class="text-xl font-semibold mb-3 mt-6">Поиск и подключение к Wi-Fi</h3>
+            <h3 class="mt-6">Поиск и подключение к Wi-Fi</h3>
             <button id="scanWifiBtn" class="btn btn-primary mb-4">Найти Wi-Fi сети</button>
-            <div id="wifiScanResults" class="space-y-2 mb-4">
+            <div id="wifiScanResults" class="mb-4">
                 <!-- Результаты сканирования будут здесь -->
             </div>
-            <div class="space-y-4">
-                <div>
-                    <label for="manualSSID" class="block text-sm font-medium text-gray-400">Имя сети (SSID):</label>
-                    <input type="text" id="manualSSID" class="input-field mt-1" placeholder="Введите SSID">
+            <div class="wifi-section">
+                <div class="setting-item">
+                    <label for="manualSSID" class="setting-label">Имя сети (SSID):</label>
+                    <input type="text" id="manualSSID" class="input-field" placeholder="Введите SSID">
                 </div>
-                <div>
-                    <label for="manualPassword" class="block text-sm font-medium text-gray-400">Пароль:</label>
-                    <input type="password" id="manualPassword" class="input-field mt-1" placeholder="Введите пароль">
+                <div class="setting-item">
+                    <label for="manualPassword" class="setting-label">Пароль:</label>
+                    <input type="password" id="manualPassword" class="input-field" placeholder="Введите пароль">
                 </div>
                 <button id="connectWifiBtn" class="btn btn-primary">Подключиться</button>
             </div>
         </div>
 
         <!-- Содержимое вкладки "Расход топлива" -->
-        <div id="fuelConsumption" class="tab-content card p-6">
-            <h2 class="text-xl font-semibold mb-4">Расход топлива</h2>
-            <div class="space-y-4">
-                <div class="text-lg mb-2">Текущее потребление: <span id="currentFuelConsumed" class="font-bold">--</span> л</div>
-                <div class="text-lg mb-2">Расчетный расход за час: <span id="hourlyFuelConsumption" class="font-bold">--</span> л/ч</div>
+        <div id="fuelConsumption" class="tab-content card">
+            <h2>Расход топлива</h2>
+            <div class="fuel-section">
+                <div class="fuel-info-item">Текущее потребление: <span id="currentFuelConsumed" class="font-bold">--</span> л</div>
+                <div class="fuel-info-item">Расчетный расход за час: <span id="hourlyFuelConsumption" class="font-bold">--</span> л/ч</div>
                 <button id="resetFuelBtn" class="btn btn-danger">Сбросить текущее потребление</button>
             </div>
         </div>
     </div>
 
     <script>
+        // JavaScript код остается без изменений
         var ws;
-        const debugConsole = document.getElementById('debugConsole'); 
+        const debugConsole = document.getElementById('debugConsole');
 
         function log(message) {
-            console.log(message); 
+            console.log(message);
             const enableLoggingCheckbox = document.getElementById('enableLoggingCheckbox');
             if (debugConsole && enableLoggingCheckbox && enableLoggingCheckbox.checked) {
                 const p = document.createElement('p');
                 p.textContent = message;
                 debugConsole.appendChild(p);
-                debugConsole.scrollTop = debugConsole.scrollHeight; 
+                debugConsole.scrollTop = debugConsole.scrollHeight;
             }
         }
 
@@ -439,7 +673,7 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
 
             ws.onopen = function() {
                 log('Подключено к WebSocket.');
-                ws.send('GET_SETTINGS'); 
+                ws.send('GET_SETTINGS');
             };
 
             ws.onmessage = function(event) {
@@ -447,14 +681,14 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
                 try {
                     const data = JSON.parse(event.data);
                     if (data.settings) {
-                        applySettingsToForm(data.settings); 
-                    } else { 
-                        updateUI(data); 
+                        applySettingsToForm(data.settings);
+                    } else {
+                        updateUI(data);
                     }
                 } catch (e) {
                     log('Ошибка парсинга JSON: ' + e.message + ' Данные: ' + event.data);
                     if (event.data.startsWith("CURRENT_SETTINGS:")) {
-                        parseAndApplySettings(event.data); 
+                        parseAndApplySettings(event.data);
                     }
                 }
             };
@@ -473,7 +707,7 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
             document.getElementById('exhaustTemp').textContent = data.exhaust_temp !== undefined ? data.exhaust_temp.toFixed(1) : '--';
             document.getElementById('fanSpeed').textContent = data.fan_speed !== undefined ? data.fan_speed.toFixed(0) : '--';
             document.getElementById('fuelRateHz').textContent = data.fuel_rate_hz !== undefined ? data.fuel_rate_hz.toFixed(2) : '--';
-            
+
             const glowPlugIcon = document.getElementById('glowPlugIcon');
             if (data.debug_glow_plug_on !== undefined) {
                 if (data.debug_glow_plug_on) {
@@ -503,12 +737,12 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
             if (data.webasto_fail !== undefined) {
                 if (data.webasto_fail) {
                     webastoFailElement.textContent = 'Да';
-                    webastoFailElement.classList.add('text-red-500');
-                    webastoFailElement.classList.remove('text-green-500');
+                    webastoFailElement.classList.add('text-red');
+                    webastoFailElement.classList.remove('text-green');
                 } else {
                     webastoFailElement.textContent = 'Нет';
-                    webastoFailElement.classList.add('text-green-500');
-                    webastoFailElement.classList.remove('text-red-500');
+                    webastoFailElement.classList.add('text-green');
+                    webastoFailElement.classList.remove('text-red');
                 }
             }
 
@@ -529,17 +763,17 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
             const wifiIPElement = document.getElementById('wifiIP');
 
             if (data.wifi_status !== undefined) {
-                if (data.wifi_status === 3) { 
+                if (data.wifi_status === 3) {
                     wifiStatusElement.textContent = 'Подключено';
-                    wifiStatusElement.classList.remove('text-red-500', 'text-yellow-500');
-                    wifiStatusElement.classList.add('text-green-500');
+                    wifiStatusElement.classList.remove('text-red', 'text-yellow');
+                    wifiStatusElement.classList.add('text-green');
                     wifiSSIDElement.textContent = data.wifi_ssid || '--';
                     wifiIPElement.textContent = data.wifi_ip || '--';
-                } else { 
+                } else {
                     wifiStatusElement.textContent = 'Настройка AP';
-                    wifiStatusElement.classList.remove('text-green-500', 'text-red-500');
-                    wifiStatusElement.classList.add('text-yellow-500');
-                    wifiSSIDElement.textContent = data.wifi_ssid || '--'; 
+                    wifiStatusElement.classList.remove('text-green', 'text-red');
+                    wifiStatusElement.classList.add('text-yellow');
+                    wifiSSIDElement.textContent = data.wifi_ssid || '--';
                     wifiIPElement.textContent = data.wifi_ip || '--';
                 }
             }
@@ -553,23 +787,23 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
             // WiFi Scan Results
             if (data.wifi_networks) {
                 const resultsDiv = document.getElementById('wifiScanResults');
-                resultsDiv.innerHTML = ''; 
+                resultsDiv.innerHTML = '';
                 if (data.wifi_networks.length > 0) {
                     const ul = document.createElement('ul');
-                    ul.className = 'list-disc list-inside';
+                    ul.className = 'list-disc';
                     data.wifi_networks.forEach(network => {
                         const li = document.createElement('li');
-                        li.className = 'text-sm cursor-pointer hover:text-blue-300';
+                        li.className = 'cursor-pointer hover-blue';
                         li.textContent = `${network.ssid} (RSSI: ${network.rssi} dBm)`;
                         li.addEventListener('click', () => {
                             document.getElementById('manualSSID').value = network.ssid;
-                            document.getElementById('manualPassword').value = ''; 
+                            document.getElementById('manualPassword').value = '';
                         });
                         ul.appendChild(li);
                     });
                     resultsDiv.appendChild(ul);
                 } else {
-                    resultsDiv.innerHTML = '<p class="text-red-300">Сети не найдены.</p>';
+                    resultsDiv.innerHTML = '<p class="text-red">Сети не найдены.</p>';
                 }
             }
 
@@ -577,12 +811,12 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
             if (data.total_fuel_consumed_liters !== undefined) {
                 document.getElementById('currentFuelConsumed').textContent = data.total_fuel_consumed_liters.toFixed(2);
             } else {
-                document.getElementById('currentFuelConsumed').textContent = '--'; // Убедимся, что отображается '--' если undefined
+                document.getElementById('currentFuelConsumed').textContent = '--';
             }
             if (data.fuel_consumption_per_hour !== undefined) {
                 document.getElementById('hourlyFuelConsumption').textContent = data.fuel_consumption_per_hour.toFixed(2);
             } else {
-                document.getElementById('hourlyFuelConsumption').textContent = '--'; // Убедимся, что отображается '--' если undefined
+                document.getElementById('hourlyFuelConsumption').textContent = '--';
             }
         }
 
@@ -601,7 +835,7 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
                 // Расчет и отображение процента для maxPwmFan
                 document.getElementById('maxPwmFanPercent').textContent = ((settingsData.max_pwm_fan / 255.0) * 100).toFixed(0);
                 document.getElementById('maxPwmFan').value = settingsData.max_pwm_fan;
-                
+
                 document.getElementById('glowBrightness').value = settingsData.glow_brightness;
                 document.getElementById('glowBrightnessPercent').textContent = ((settingsData.glow_brightness / 255.0) * 100).toFixed(0);
 
@@ -624,7 +858,7 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
                     settings[key.trim()] = parseInt(value.trim());
                 }
             });
-            applySettingsToForm(settings); 
+            applySettingsToForm(settings);
         }
 
         document.getElementById('toggleBurnBtn').addEventListener('click', function() {
@@ -696,7 +930,7 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
 
         document.getElementById('loadSettingsBtn').addEventListener('click', function() {
             if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send('GET_SETTINGS'); 
+                ws.send('GET_SETTINGS');
                 log('Запрос текущих настроек...');
             } else {
                 log('WebSocket не подключен.');
@@ -727,7 +961,7 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
                 log('Отправлена команда: ' + (this.checked ? 'Включить' : 'Выключить') + ' лог.');
             } else {
                 log('WebSocket не подключен.');
-                this.checked = !this.checked; 
+                this.checked = !this.checked;
             }
         });
 
@@ -735,7 +969,7 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send('SCAN_WIFI');
                 log('Отправлена команда: Сканировать Wi-Fi сети.');
-                document.getElementById('wifiScanResults').innerHTML = '<p class="text-yellow-300">Сканирование...</p>';
+                document.getElementById('wifiScanResults').innerHTML = '<p class="text-yellow">Сканирование...</p>';
             } else {
                 log('WebSocket не подключен.');
             }
@@ -761,7 +995,6 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
             }
         });
 
-
         document.getElementById('heaterTarget').addEventListener('input', function() {
             document.getElementById('heaterTargetValue').textContent = this.value;
         });
@@ -779,31 +1012,20 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
             var i, tabcontent, tablinks;
             tabcontent = document.getElementsByClassName("tab-content");
             for (i = 0; i < tabcontent.length; i++) {
-                tabcontent[i].style.display = "none"; 
-                tabcontent[i].classList.remove('active'); 
+                tabcontent[i].classList.remove('active');
             }
             tablinks = document.getElementsByClassName("tab-button");
             for (i = 0; i < tablinks.length; i++) {
-                tablinks[i].classList.remove("active"); 
+                tablinks[i].classList.remove("active");
             }
-            document.getElementById(tabName).style.display = "block"; 
-            document.getElementById(tabName).classList.add('active'); 
-            evt.currentTarget.classList.add("active"); 
+            document.getElementById(tabName).classList.add('active');
+            evt.currentTarget.classList.add("active");
         }
 
         window.onload = function() {
             connectWebSocket();
-            // Скрываем все вкладки, кроме первой, при загрузке страницы
-            var tabContents = document.getElementsByClassName("tab-content");
-            for (var i = 1; i < tabContents.length; i++) {
-                tabContents[i].style.display = "none";
-                tabContents[i].classList.remove('active');
-            }
-            document.getElementById('controlStatus').style.display = 'block';
-            document.getElementById('controlStatus').classList.add('active');
             document.querySelector('.tab-buttons .tab-button:first-child').classList.add('active');
         };
-
     </script>
 </body>
 </html>
