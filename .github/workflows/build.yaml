@@ -1,9 +1,6 @@
 name: Build, Tag and Release
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 jobs:
@@ -34,21 +31,23 @@ jobs:
       run: |
         VERSION=$(date +%Y%m%d.%H%M%S)
         echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
 
     - name: Create tag
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
-        git tag v${{ steps.version.outputs.version }}
-        git push origin v${{ steps.version.outputs.version }}
+        git tag v${{ env.VERSION }}
+        git push origin v${{ env.VERSION }}
 
     - name: Create Release
+      id: create_release
       uses: actions/create-release@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: v${{ steps.version.outputs.version }}
-        release_name: Release v${{ steps.version.outputs.version }}
+        tag_name: v${{ env.VERSION }}
+        release_name: Release v${{ env.VERSION }}
         body: |
           Автоматический релиз скомпилированного firmware.
         draft: false
