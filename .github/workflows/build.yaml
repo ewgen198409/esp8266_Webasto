@@ -36,10 +36,10 @@ jobs:
 
     - name: Create tag
       run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git tag v${{ env.VERSION }}
-        git push origin v${{ env.VERSION }}
+        TAG_NAME="v1.1.2-$(date +%Y%m%d)"
+        echo "TAG_NAME=$TAG_NAME" >> $GITHUB_ENV
+        git tag $TAG_NAME
+        git push origin $TAG_NAME
 
     - name: Create Release
       id: create_release
