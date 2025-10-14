@@ -2,6 +2,11 @@ name: Build, Tag and Release
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: 1.1.0
+        required: true
+        type: string
 
 jobs:
   build:
@@ -23,23 +28,26 @@ jobs:
         python -m pip install --upgrade pip
         pip install platformio
 
+    - name: Update firmware version in code
+      run: |
+        VERSION="${{ inputs.version }}"
+        sed -i "s/const char\* FIRMWARE_VERSION = \".*\";/const char* FIRMWARE_VERSION = \"$VERSION\";/" src/wifi.ino
+        echo "Updated FIRMWARE_VERSION to $VERSION"
+
     - name: Build project
       run: pio run
 
-    - name: Get version
-      id: version
-      run: |
-        VERSION=$(date +%Y%m%d.%H%M%S)
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
-        echo "VERSION=$VERSION" >> $GITHUB_ENV
-        echo "VERSION=$VERSION" >> $GITHUB_STATE
-
     - name: Create tag
       run: |
-        TAG_NAME="v1.1.2-$(date +%Y%m%d)"
+        VERSION="${{ inputs.version }}"
+        TAG_NAME="v$VERSION"
         echo "TAG_NAME=$TAG_NAME" >> $GITHUB_ENV
-        git tag $TAG_NAME
-        git push origin $TAG_NAME
+        git config --global user.name "GitHub Actions"
+        git config --global user.email "actions@github.com"
+        git add src/wifi.ino
+        git commit -m "Update firmware version to $VERSION" || echo "No changes to commit"
+        git tag -f $TAG_NAME
+        git push -f origin $TAG_NAME
 
     - name: Create Release
       id: create_release
@@ -47,10 +55,13 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: v${{ env.VERSION }}
-        release_name: Release v${{ env.VERSION }}
+        tag_name: ${{ env.TAG_NAME }}
+        release_name: Release ${{ env.TAG_NAME }}
         body: |
-          Автоматический релиз скомпилированного firmware.
+          Автоматический релиз firmware версии ${{ env.TAG_NAME }}.
+
+          ## Изменения
+          - Обновлена версия прошивки до ${{ env.TAG_NAME }}
         draft: false
         prerelease: false
 

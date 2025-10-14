@@ -5,9 +5,13 @@
 #include <ESP8266mDNS.h>
 #include <EEPROM.h> // Добавляем для работы с EEPROM
 #include <ESP8266HTTPUpdateServer.h> // Добавьте эту строку в самый начало
+#include <ESP8266HTTPClient.h>
 
 // Глобальная переменная для управления логированием
 extern bool loggingEnabled;
+
+// Версия прошивки
+const char* FIRMWARE_VERSION = "1.0.0";
 
 // Имя хоста для mDNS
 const char* mdns_hostname = "espwebasto";
@@ -741,7 +745,7 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
 
             // Загрузка информации о прошивке
             function loadFirmwareInfo() {
-                fwVersion.textContent = '1.0.0';                                // Можно добавить реальную версию из кода
+                fwVersion.textContent = '1.0.0'; // Используем переменную FIRMWARE_VERSION из кода ESP
                 fwDate.textContent = new Date().toLocaleDateString();
                 fwIP.textContent = window.location.hostname || '192.168.10.10';
             }
@@ -765,12 +769,80 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
 
             // Кнопка проверки обновлений
             checkUpdateBtn.addEventListener('click', function() {
-                showStatus('Проверка обновлений...', 'info');
-                // Здесь можно добавить проверку на сервере обновлений
-                setTimeout(() => {
-                    showStatus('Проверка завершена. Используется последняя версия.', 'success');
-                }, 2000);
+                checkForUpdates();
             });
+
+            // Функция проверки обновлений на GitHub
+            function checkForUpdates() {
+                showStatus('Проверка обновлений на GitHub...', 'info');
+
+                fetch('https://api.github.com/repos/ewgen198409/esp8266_Webasto/releases/latest')
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Не удалось получить информацию о релизах');
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        // Получаем текущую версию из данных устройства
+                        const currentVersion = fwVersion.textContent || '1.0.0';
+                        const latestVersion = data.tag_name.replace('v', ''); // Убираем 'v' из тега
+
+                        if (latestVersion > currentVersion) {
+                            showStatus(`Найдена новая версия: ${latestVersion}. Скачивание...`, 'info');
+
+                            // Ищем firmware.bin в assets
+                            const firmwareAsset = data.assets.find(asset => asset.name === 'firmware.bin');
+                            if (firmwareAsset) {
+                                downloadAndUpdate(firmwareAsset.browser_download_url, latestVersion);
+                            } else {
+                                showStatus('Ошибка: файл firmware.bin не найден в релизе.', 'error');
+                            }
+                        } else {
+                            showStatus('У вас установлена последняя версия.', 'success');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Ошибка при проверке обновлений:', error);
+                        showStatus('Ошибка при проверке обновлений: ' + error.message, 'error');
+                    });
+            }
+
+            // Функция скачивания и обновления прошивки
+            function downloadAndUpdate(downloadUrl, version) {
+                fetch(downloadUrl)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Не удалось скачать файл прошивки');
+                        }
+                        return response.blob();
+                    })
+                    .then(blob => {
+                        // Создаем FormData для отправки файла
+                        const formData = new FormData();
+                        formData.append('firmware', blob, 'firmware.bin');
+
+                        // Отправляем файл на устройство
+                        return fetch('/update', {
+                            method: 'POST',
+                            body: formData
+                        });
+                    })
+                    .then(response => {
+                        if (response.ok) {
+                            showStatus(`✅ Прошивка версии ${version} успешно загружена! Устройство перезагружается...`, 'success');
+                            setTimeout(() => {
+                                window.location.reload();
+                            }, 5000);
+                        } else {
+                            throw new Error('Ошибка при загрузке прошивки на устройство');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Ошибка при обновлении:', error);
+                        showStatus('Ошибка при обновлении: ' + error.message, 'error');
+                    });
+            }
 
             // Кнопка начала обновления
             updateBtn.addEventListener('click', function() {
@@ -1456,7 +1528,7 @@ void send_status_update() {
     if (delayed_period > 0) {
       calculated_fuel_rate_hz = 1000.00 / delayed_period;
     }
-    
+
     doc["exhaust_temp"] = exhaust_temp;
     doc["fan_speed"] = fan_speed;
     doc["fuel_rate_hz"] = calculated_fuel_rate_hz;
@@ -1483,6 +1555,7 @@ void send_status_update() {
     doc["logging_enabled"] = loggingEnabled;
     doc["total_fuel_consumed_liters"] = total_fuel_consumed_liters;
     doc["fuel_consumption_per_hour"] = fuel_consumption_per_hour;
+    doc["firmware_version"] = FIRMWARE_VERSION;
 
     String jsonString;
     serializeJson(doc, jsonString);
