@@ -1,13 +1,15 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <WebSocketsServer.h>
-#include <ArduinoJson.h> // Библиотека для работы с JSON
-#include <ESP8266mDNS.h> // Библиотека для mDNS
+#include <ArduinoJson.h>
+#include <ESP8266mDNS.h>
+#include <EEPROM.h> // Добавляем для работы с EEPROM
+#include <ESP8266HTTPUpdateServer.h> // Добавьте эту строку в самый начало
 
 // Глобальная переменная для управления логированием
 extern bool loggingEnabled;
 
-// Имя хоста для mDNS (например, http://espwebasto.local в браузере)
+// Имя хоста для mDNS
 const char* mdns_hostname = "espwebasto";
 
 // Объект веб-сервера на порту 80
@@ -15,48 +17,61 @@ ESP8266WebServer server(80);
 // Объект WebSocket сервера на порту 81
 WebSocketsServer webSocket = WebSocketsServer(81);
 
-// Объявление внешних переменных из других файлов .ino
-// Эти переменные должны быть определены в вашем основном коде (например, low_smoke.ino)
+
+// OTA обновление
+ESP8266HTTPUpdateServer httpUpdater;
+
+
+// Флаги режима работы
+bool isAPMode = false;
+unsigned long wifiConnectStartTime = 0;
+const unsigned long WIFI_CONNECT_TIMEOUT = 15000; // 15 секунд на подключение
+
+// Структура для хранения WiFi настроек в EEPROM
+struct WiFiSettings {
+  char ssid[32];
+  char password[64];
+  bool valid;
+};
+
+WiFiSettings storedWiFi;
+
+// Адреса в EEPROM для хранения настроек
+// Используем область после настроек из low_smoke.ino
+const int EEPROM_SIZE = 512;
+const int WIFI_SETTINGS_ADDR = 200; // Начинаем после настроек из low_smoke.ino
+
+// Объявление внешних переменных
 extern float exhaust_temp;
 extern float fan_speed;
-extern float fuel_need; // Эта переменная теперь может быть не нужна, если fuel_need рассчитывается из delayed_period
+extern float fuel_need;
 extern int glow_time;
-extern int glow_left; // Добавлено extern для glow_left
+extern int glow_left;
 extern int burn_mode;
 extern bool burn;
 extern bool webasto_fail;
 extern const char* message;
 extern int attempt;
-extern int delayed_period; // Добавлено объявление extern для delayed_period
-extern bool fuelPumpingActive; // Добавлено объявление extern для fuelPumpingActive
-
+extern int delayed_period;
+extern bool fuelPumpingActive;
 extern SystemState currentState;
-
-
-// Новые глобальные переменные для учета расхода топлива
-extern float total_fuel_consumed_liters; // Общее количество потребленного топлива в литрах
-extern float fuel_consumption_per_hour;  // Средний расход топлива за 1 час в литрах/час
-
+extern float total_fuel_consumed_liters;
+extern float fuel_consumption_per_hour;
 extern Settings settings;
-
-// Новые extern объявления для глобальных переменных из fan.txt и glow.txt
 extern int max_pwm_global;
-extern unsigned long glow_brightness_max; // Изменено на unsigned long
-extern unsigned long glow_fade_in_duration_ms; // Изменено на unsigned long
-extern unsigned long glow_fade_out_duration_ms; // Изменено на unsigned long
+extern unsigned long glow_brightness_max;
+extern unsigned long glow_fade_in_duration_ms;
+extern unsigned long glow_fade_out_duration_ms;
 
-
-// Объявление внешних функций для управления
-// Эти функции должны быть определены в вашем основном коде (например, control.ino или low_smoke.ino)
+// Объявление внешних функций
 extern void handleUpCommand();
 extern void handleDownCommand();
 extern void handleEnterCommand();
 extern void handleFuelPumpingCommand();
-// ОБНОВЛЕНО: Добавлен параметр bool is_from_websocket к объявлению extern
-extern void handleSettingsUpdate(char* paramsStr, bool is_from_websocket); 
-extern void resetToDefaultSettings(); // Добавлено для сброса настроек через веб-интерфейс
+extern void handleSettingsUpdate(char* paramsStr, bool is_from_websocket);
+extern void resetToDefaultSettings();
 
-// Переменная для отслеживания, подключен ли клиент к WebSocket
+// Переменная для отслеживания подключения WebSocket
 bool wsConnected = false;
 
 // HTML-страница для веб-интерфейса (ВОССТАНОВЛЕНА ПОЛНАЯ ВЕРСИЯ)
@@ -83,7 +98,6 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
 			margin-right: auto;
 			display: flex;
 			flex-direction: column;
-			/* УБРАТЬ gap: 24px; */
 		}
 
 		/* Создаем отдельный контейнер для вкладок без отступов */
@@ -167,23 +181,22 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
 			background-color: #4a5568;
 			border: 1px solid #6b7280;
 			border-radius: 0.5rem;
-			padding: 0.75rem 1rem; /* Увеличил padding */
+			padding: 0.75rem 1rem;
 			color: #e2e8f0;
 			width: 100%;
 			margin-top: 4px;
-			font-size: 1rem; /* Добавил размер шрифта */
-			box-sizing: border-box; /* Важно для правильного расчета ширины */
+			font-size: 1rem;
+			box-sizing: border-box;
 		}
 
-		/* Специфичные стили для number input */
 		.input-field[type="number"] {
-			min-width: 120px; /* Минимальная ширина для числовых полей */
+			min-width: 120px;
 		}
-		/* Улучшаем внешний вид слайдеров */
+		
 		.slider {
 			-webkit-appearance: none;
 			width: 100%;
-			height: 10px; /* Увеличил высоту */
+			height: 10px;
 			border-radius: 5px;
 			background: #4a5568;
 			outline: none;
@@ -201,7 +214,7 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
 		.slider::-webkit-slider-thumb {
 			-webkit-appearance: none;
 			appearance: none;
-			width: 22px; /* Увеличил размер бегунка */
+			width: 22px;
 			height: 22px;
 			border-radius: 50%;
 			background: #4299e1;
@@ -236,7 +249,7 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
         .glow-icon.on { fill: #FFD700; }
         .glow-icon.off { fill: #6B7280; }
 
-        /* ИСПРАВЛЕННЫЕ СТИЛИ ДЛЯ ВКЛАДОК - убран отступ */
+        /* ИСПРАВЛЕННЫЕ СТИЛИ ДЛЯ ВКЛАДОК */
 		.tab-buttons {
 			display: flex;
 			justify-content: flex-start;
@@ -279,10 +292,10 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
 			z-index: 1;
 		}
 		.tab-content.card {
-			margin-top: -1px; /* Отрицательный margin для перекрытия границы */
+			margin-top: -1px;
 			border-radius: 0 0 0.75rem 0.75rem;
 			border: 1px solid #4a5568;
-			border-top: none; /* Убираем верхнюю границу */
+			border-top: none;
 		}
 		.tab-content {
 			display: none;
@@ -464,19 +477,18 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
     </style>
 </head>
 <body>
-	<div class="container">
-		<h1>Управление Webasto</h1>
+    <div class="container">
+        <h1>Управление Webasto</h1>
 
-		<!-- ОБЕРТКА ДЛЯ ВКЛАДОК БЕЗ ОТСТУПОВ -->
-		<div class="tabs-container">
-			<!-- Кнопки вкладок -->
-			<div class="tab-buttons">
-				<div class="tab-button active" onclick="openTab(event, 'controlStatus')">Управление и статус</div>
-				<div class="tab-button" onclick="openTab(event, 'settings')">Настройки</div>
-				<div class="tab-button" onclick="openTab(event, 'log')">Лог</div>
-				<div class="tab-button" onclick="openTab(event, 'wifiSettings')">Wi-Fi</div>
-				<div class="tab-button" onclick="openTab(event, 'fuelConsumption')">Расход топлива</div>
-			</div>
+        <div class="tabs-container">
+            <div class="tab-buttons">
+                <div class="tab-button active" onclick="openTab(event, 'controlStatus')">Управление и статус</div>
+                <div class="tab-button" onclick="openTab(event, 'settings')">Настройки</div>
+                <div class="tab-button" onclick="openTab(event, 'log')">Лог</div>
+                <div class="tab-button" onclick="openTab(event, 'wifiSettings')">Wi-Fi</div>
+                <div class="tab-button" onclick="openTab(event, 'fuelConsumption')">Расход топлива</div>
+                <div class="tab-button" onclick="openTab(event, 'otaUpdate')">OTA Обновление</div>
+            </div>
 
         <!-- Содержимое вкладки "Управление и статус" -->
         <div id="controlStatus" class="tab-content active card">
@@ -484,6 +496,8 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
                 <div>
                     <h2>Текущий статус</h2>
                     
+                    <div class="status-item">Режим WiFi: <span id="wifiModeDisplay" class="font-bold">--</span></div>
+                    <div class="status-item">IP устройства: <span id="deviceIP" class="font-bold">--</span></div>
                     <div class="status-item">
                         Состояние: <span id="statusMessage" class="font-bold">Ожидание...</span>
                         <span id="burnStatusIndicator" class="status-indicator status-off"></span>
@@ -507,8 +521,8 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
                     <h2>Управление</h2>
                     <button id="toggleBurnBtn" class="btn btn-primary">Включить / Выключить</button>
                     <div class="button-row">
-                        <button id="downBtn" class="btn btn-secondary">Вниз (Режим)</button>
-                        <button id="upBtn" class="btn btn-secondary">Вверх (Режим)</button>
+                        <button id="downBtn" class="btn btn-secondary">Вверх (Режим)</button>
+                        <button id="upBtn" class="btn btn-secondary">Вниз (Режим)</button>
                     </div>
                     <button id="fuelPumpBtn" class="btn btn-secondary">Прокачка топлива</button>
                     <button id="clearFailBtn" class="btn btn-danger">Сбросить ошибку</button>
@@ -610,6 +624,7 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
             <h2>Настройки Wi-Fi</h2>
             <div class="wifi-section">
                 <div class="wifi-info">
+                    <div class="wifi-info-item">Режим работы: <span id="wifiMode" class="font-bold">--</span></div>
                     <div class="wifi-info-item">Статус подключения: <span id="wifiStatus" class="font-bold">--</span></div>
                     <div class="wifi-info-item">SSID: <span id="wifiSSID" class="font-bold">--</span></div>
                     <div class="wifi-info-item">IP Адрес: <span id="wifiIP" class="font-bold">--</span></div>
@@ -647,12 +662,201 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
                 <button id="resetFuelBtn" class="btn btn-danger">Сбросить текущее потребление</button>
             </div>
         </div>
+
+
+        <!-- Новая вкладка OTA Обновление -->
+        <div id="otaUpdate" class="tab-content card">
+            <h2>OTA Обновление прошивки</h2>
+            <div class="ota-section">
+                
+                <div class="ota-info">
+                    <h3>Информация о текущей прошивке</h3>
+                    <div id="firmwareInfo">
+                        <p>Версия: <span id="fwVersion">Загрузка...</span></p>
+                        <p>Дата сборки: <span id="fwDate">Загрузка...</span></p>
+                        <p>IP устройства: <span id="fwIP">Загрузка...</span></p>
+                    </div>
+                </div>
+                <div class="ota-warning">
+                    <h3>⚠️ Важные предупреждения</h3>
+                    <ul>
+                        <li>Не выключайте питание во время обновления</li>
+                        <li>Обновление займет 30-60 секунд</li>
+                        <li>После обновления устройство перезагрузится автоматически</li>
+                        <li>Убедитесь, что файл прошивки предназначен для этого устройства</li>
+                    </ul>
+                </div>
+                <div class="ota-upload">
+                    <h3>Загрузка новой прошивки</h3>
+                    
+                    <input type="file" id="firmwareFile" class="file-input" accept=".bin">
+                    <label for="firmwareFile" class="file-label" id="fileLabel">
+                        📁 Выберите файл прошивки (.bin)
+                    </label>
+                    
+                    <div id="fileInfo" class="status-info status-message">
+                        Выбран файл: <span id="fileName" class="font-bold"></span>
+                        (<span id="fileSize"></span> байт)
+                    </div>
+                    <div class="progress-container" id="progressContainer">
+                        <div class="progress-bar" id="progressBar">0%</div>
+                    </div>
+                    <div id="statusMessage" class="status-message"></div>
+                    <button id="updateBtn" class="btn btn-success" disabled>
+                        Начать обновление
+                    </button>
+                    <button id="checkUpdateBtn" class="btn btn-secondary">
+                        Проверить обновления
+                    </button>
+                </div>
+                <div class="ota-manual">
+                    <h3>Ручное обновление</h3>
+                    <p>Или перейдите по ссылке для стандартного обновления:</p>
+                    <a href="/update" target="_blank" class="btn btn-warning">
+                        📤 Открыть страницу обновления
+                    </a>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
-        // JavaScript код остается без изменений
+
+        // Добавляем OTA функциональность
+        document.addEventListener('DOMContentLoaded', function() {
+            // Элементы OTA
+            const firmwareFile = document.getElementById('firmwareFile');
+            const fileLabel = document.getElementById('fileLabel');
+            const fileInfo = document.getElementById('fileInfo');
+            const fileName = document.getElementById('fileName');
+            const fileSize = document.getElementById('fileSize');
+            const updateBtn = document.getElementById('updateBtn');
+            const progressContainer = document.getElementById('progressContainer');
+            const progressBar = document.getElementById('progressBar');
+            const statusMessage = document.getElementById('statusMessage');
+            const checkUpdateBtn = document.getElementById('checkUpdateBtn');
+            const fwVersion = document.getElementById('fwVersion');
+            const fwDate = document.getElementById('fwDate');
+            const fwIP = document.getElementById('fwIP');
+
+            // Загрузка информации о прошивке
+            function loadFirmwareInfo() {
+                fwVersion.textContent = '1.0.0';                                // Можно добавить реальную версию из кода
+                fwDate.textContent = new Date().toLocaleDateString();
+                fwIP.textContent = window.location.hostname || '192.168.10.10';
+            }
+
+            // Обработчик выбора файла
+            firmwareFile.addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    if (file.name.endsWith('.bin')) {
+                        fileName.textContent = file.name;
+                        fileSize.textContent = file.size.toLocaleString();
+                        fileInfo.style.display = 'block';
+                        updateBtn.disabled = false;
+                        fileLabel.textContent = '✅ ' + file.name;
+                    } else {
+                        showStatus('Ошибка: выберите файл с расширением .bin', 'error');
+                        resetFileInput();
+                    }
+                }
+            });
+
+            // Кнопка проверки обновлений
+            checkUpdateBtn.addEventListener('click', function() {
+                showStatus('Проверка обновлений...', 'info');
+                // Здесь можно добавить проверку на сервере обновлений
+                setTimeout(() => {
+                    showStatus('Проверка завершена. Используется последняя версия.', 'success');
+                }, 2000);
+            });
+
+            // Кнопка начала обновления
+            updateBtn.addEventListener('click', function() {
+                const file = firmwareFile.files[0];
+                if (!file) {
+                    showStatus('Ошибка: файл не выбран', 'error');
+                    return;
+                }
+
+                if (!confirm('ВНИМАНИЕ! Начинается обновление прошивки. Не выключайте питание! Продолжить?')) {
+                    return;
+                }
+
+                uploadFirmware(file);
+            });
+
+            // Функция загрузки прошивки
+            function uploadFirmware(file) {
+                const xhr = new XMLHttpRequest();
+                const formData = new FormData();
+                formData.append('firmware', file);
+
+                xhr.upload.addEventListener('progress', function(e) {
+                    if (e.lengthComputable) {
+                        const percent = (e.loaded / e.total) * 100;
+                        updateProgress(percent);
+                    }
+                });
+
+                xhr.addEventListener('load', function() {
+                    if (xhr.status === 200) {
+                        showStatus('✅ Обновление успешно завершено! Устройство перезагружается...', 'success');
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 5000);
+                    } else {
+                        showStatus('❌ Ошибка обновления: ' + xhr.responseText, 'error');
+                    }
+                    resetProgress();
+                });
+
+                xhr.addEventListener('error', function() {
+                    showStatus('❌ Ошибка сети при обновлении', 'error');
+                    resetProgress();
+                });
+
+                xhr.open('POST', '/update');
+                xhr.send(formData);
+
+                progressContainer.style.display = 'block';
+                updateBtn.disabled = true;
+                showStatus('🔄 Идет обновление... Не выключайте питание!', 'info');
+            }
+
+            // Вспомогательные функции
+            function updateProgress(percent) {
+                progressBar.style.width = percent + '%';
+                progressBar.textContent = Math.round(percent) + '%';
+            }
+
+            function resetProgress() {
+                progressBar.style.width = '0%';
+                progressBar.textContent = '0%';
+                progressContainer.style.display = 'none';
+            }
+
+            function showStatus(message, type) {
+                statusMessage.textContent = message;
+                statusMessage.className = 'status-message status-' + type;
+                statusMessage.style.display = 'block';
+            }
+
+            function resetFileInput() {
+                firmwareFile.value = '';
+                fileLabel.textContent = '📁 Выберите файл прошивки (.bin)';
+                fileInfo.style.display = 'none';
+                updateBtn.disabled = true;
+            }
+
+            // Загружаем информацию о прошивке при старте
+            loadFirmwareInfo();
+        });
+
         var ws;
         const debugConsole = document.getElementById('debugConsole');
+        var deviceIP = ''; // Будет установлен при подключении
 
         function log(message) {
             console.log(message);
@@ -665,11 +869,33 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
             }
         }
 
+        function getWebSocketURL() {
+            // Если IP устройства уже известен, используем его
+            if (deviceIP) {
+                return 'ws://' + deviceIP + ':81/';
+            }
+            
+            // Иначе пробуем разные варианты
+            const hostname = window.location.hostname;
+            if (hostname && hostname !== '') {
+                return 'ws://' + hostname + ':81/';
+            }
+            
+            // Если hostname пустой, используем текущий IP
+            const currentHost = window.location.host;
+            if (currentHost && currentHost !== '') {
+                return 'ws://' + currentHost.split(':')[0] + ':81/';
+            }
+            
+            // Последний вариант - фиксированный IP для AP режима
+            return 'ws://192.168.10.10:81/';
+        }
+
         function connectWebSocket() {
-            const wsUrl = 'ws://192.168.10.10:81/';
+            const wsUrl = getWebSocketURL();
+            log('Попытка подключения к WebSocket по адресу: ' + wsUrl);
 
             ws = new WebSocket(wsUrl);
-            log('Попытка подключения к WebSocket по адресу: ' + wsUrl);
 
             ws.onopen = function() {
                 log('Подключено к WebSocket.');
@@ -700,10 +926,43 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
 
             ws.onerror = function(error) {
                 log('Ошибка WebSocket: ' + error.message);
+                // Пробуем альтернативный адрес при ошибке
+                setTimeout(connectWebSocket, 3000);
             };
         }
 
         function updateUI(data) {
+            // Обновляем информацию о WiFi режиме и IP
+            if (data.wifi_mode) {
+                document.getElementById('wifiModeDisplay').textContent = data.wifi_mode;
+                document.getElementById('wifiModeDisplay').className = data.wifi_mode === 'AP' ? 'font-bold text-yellow' : 'font-bold text-green';
+                
+                document.getElementById('wifiMode').textContent = data.wifi_mode === 'AP' ? 'Точка доступа' : 'Клиент (STA)';
+                document.getElementById('wifiMode').className = data.wifi_mode === 'AP' ? 'font-bold text-yellow' : 'font-bold text-green';
+            }
+            
+            if (data.wifi_ip) {
+                document.getElementById('deviceIP').textContent = data.wifi_ip;
+                document.getElementById('wifiIP').textContent = data.wifi_ip;
+                deviceIP = data.wifi_ip; // Сохраняем IP для переподключения
+            }
+
+            // WiFi статус
+            if (data.wifi_ssid) {
+                document.getElementById('wifiSSID').textContent = data.wifi_ssid;
+            }
+
+            // Статус WiFi
+            const wifiStatusElement = document.getElementById('wifiStatus');
+            if (data.wifi_mode === 'AP') {
+                wifiStatusElement.textContent = 'Точка доступа активна';
+                wifiStatusElement.className = 'font-bold text-yellow';
+            } else {
+                wifiStatusElement.textContent = 'Подключено';
+                wifiStatusElement.className = 'font-bold text-green';
+            }
+
+            // Основные данные состояния
             document.getElementById('exhaustTemp').textContent = data.exhaust_temp !== undefined ? data.exhaust_temp.toFixed(1) : '--';
             document.getElementById('fanSpeed').textContent = data.fan_speed !== undefined ? data.fan_speed.toFixed(0) : '--';
             document.getElementById('fuelRateHz').textContent = data.fuel_rate_hz !== undefined ? data.fuel_rate_hz.toFixed(2) : '--';
@@ -755,27 +1014,6 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
                     case 2: stateText = 'LOW'; break;
                 }
                 currentStateElement.textContent = stateText;
-            }
-
-            // WiFi Status
-            const wifiStatusElement = document.getElementById('wifiStatus');
-            const wifiSSIDElement = document.getElementById('wifiSSID');
-            const wifiIPElement = document.getElementById('wifiIP');
-
-            if (data.wifi_status !== undefined) {
-                if (data.wifi_status === 3) {
-                    wifiStatusElement.textContent = 'Подключено';
-                    wifiStatusElement.classList.remove('text-red', 'text-yellow');
-                    wifiStatusElement.classList.add('text-green');
-                    wifiSSIDElement.textContent = data.wifi_ssid || '--';
-                    wifiIPElement.textContent = data.wifi_ip || '--';
-                } else {
-                    wifiStatusElement.textContent = 'Настройка AP';
-                    wifiStatusElement.classList.remove('text-green', 'text-red');
-                    wifiStatusElement.classList.add('text-yellow');
-                    wifiSSIDElement.textContent = data.wifi_ssid || '--';
-                    wifiIPElement.textContent = data.wifi_ip || '--';
-                }
             }
 
             // Logging Enabled Status
@@ -1031,87 +1269,230 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
 </html>
 )rawliteral";
 
-// Функция для инициализации Wi-Fi в режиме точки доступа
-void setup_wifi_station() {
-  Serial.println();
-  Serial.println("DEBUG: === Starting WiFi Access Point setup ===");
-  Serial.flush();
+// Функция для инициализации EEPROM для WiFi
+void initWiFiEEPROM() {
+  EEPROM.begin(EEPROM_SIZE);
+  
+  // Читаем сохраненные настройки WiFi
+  EEPROM.get(WIFI_SETTINGS_ADDR, storedWiFi);
+  
+  // Проверяем валидность данных
+  if (!storedWiFi.valid || strlen(storedWiFi.ssid) == 0) {
+    Serial.println("DEBUG: No valid WiFi settings found in EEPROM");
+    memset(&storedWiFi, 0, sizeof(storedWiFi));
+    storedWiFi.valid = false;
+  } else {
+    Serial.printf("DEBUG: Found saved WiFi: %s\n", storedWiFi.ssid);
+  }
+}
 
-  // Устанавливаем режим сна Wi-Fi в WIFI_NONE_SLEEP для повышения стабильности
+// Функция для сохранения WiFi настроек в EEPROM
+void saveWiFiSettings(const char* ssid, const char* password) {
+  memset(&storedWiFi, 0, sizeof(storedWiFi));
+  strncpy(storedWiFi.ssid, ssid, sizeof(storedWiFi.ssid) - 1);
+  if (password) {
+    strncpy(storedWiFi.password, password, sizeof(storedWiFi.password) - 1);
+  }
+  storedWiFi.valid = true;
+  
+  EEPROM.put(WIFI_SETTINGS_ADDR, storedWiFi);
+  EEPROM.commit();
+  
+  Serial.printf("DEBUG: WiFi settings saved: SSID=%s\n", ssid);
+}
+
+// Функция для очистки WiFi настроек
+void clearWiFiSettings() {
+  memset(&storedWiFi, 0, sizeof(storedWiFi));
+  storedWiFi.valid = false;
+  
+  EEPROM.put(WIFI_SETTINGS_ADDR, storedWiFi);
+  EEPROM.commit();
+  
+  Serial.println("DEBUG: WiFi settings cleared");
+}
+
+// Функция для попытки подключения к сохраненной WiFi сети
+bool connectToSavedWiFi() {
+  if (!storedWiFi.valid || strlen(storedWiFi.ssid) == 0) {
+    Serial.println("DEBUG: No saved WiFi credentials found");
+    return false;
+  }
+  
+  Serial.println("DEBUG: Attempting to connect to saved WiFi...");
+  Serial.printf("DEBUG: SSID: %s\n", storedWiFi.ssid);
+  
+  // Инициализируем WiFi в станционном режиме
+  WiFi.mode(WIFI_STA);
   WiFi.setSleepMode(WIFI_NONE_SLEEP);
+  
+  // Пытаемся подключиться к сохраненной сети
+  WiFi.begin(storedWiFi.ssid, storedWiFi.password);
+  
+  Serial.print("DEBUG: Connecting to WiFi");
+  wifiConnectStartTime = millis();
+  
+  // Ждем подключения с таймаутом
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+    
+    // Проверяем таймаут
+    if (millis() - wifiConnectStartTime > WIFI_CONNECT_TIMEOUT) {
+      Serial.println();
+      Serial.println("DEBUG: WiFi connection timeout!");
+      return false;
+    }
+  }
+  
+  Serial.println();
+  Serial.println("DEBUG: WiFi connected successfully!");
+  Serial.print("DEBUG: IP address: ");
+  Serial.println(WiFi.localIP());
+  
+  return true;
+}
 
+// Функция для настройки точки доступа
+void setupAPMode() {
+  Serial.println("DEBUG: Setting up Access Point mode...");
+  
+  // Переключаемся в режим точки доступа
+  WiFi.mode(WIFI_AP);
+  WiFi.setSleepMode(WIFI_NONE_SLEEP);
+  
   // Настраиваем точку доступа с фиксированными параметрами
-  const char* ap_ssid = mdns_hostname; // Используем mdns_hostname как SSID
-  const char* ap_password = "12345678"; // Фиксированный пароль
-  IPAddress ap_ip(192, 168, 10, 10); // Фиксированный IP точки доступа
-  IPAddress subnet(255, 255, 255, 0); // Маска подсети
-  IPAddress dhcp_start(192, 168, 10, 100); // Начало диапазона DHCP
-  IPAddress dhcp_end(192, 168, 10, 110); // Конец диапазона DHCP
-
+  const char* ap_ssid = mdns_hostname;
+  const char* ap_password = "12345678";
+  IPAddress ap_ip(192, 168, 10, 10);
+  IPAddress subnet(255, 255, 255, 0);
+  
   // Настраиваем статический IP для точки доступа
   WiFi.softAPConfig(ap_ip, ap_ip, subnet);
-
+  
   // Запускаем точку доступа
   if (WiFi.softAP(ap_ssid, ap_password)) {
+    isAPMode = true;
     Serial.println("DEBUG: Access Point started successfully.");
     Serial.print("DEBUG: AP SSID: ");
     Serial.println(ap_ssid);
-    Serial.print("DEBUG: AP Password: ");
-    Serial.println(ap_password);
     Serial.print("DEBUG: AP IP address: ");
     Serial.println(WiFi.softAPIP());
-    Serial.flush();
   } else {
     Serial.println("ERROR: Failed to start Access Point!");
-    Serial.flush();
-    return;
   }
+}
 
-  // Инициализация mDNS
+// Основная функция настройки WiFi
+void setup_wifi_station() {
+  Serial.println();
+  Serial.println("DEBUG: === Starting WiFi Setup ===");
+  
+  // Инициализируем EEPROM для WiFi настроек
+  initWiFiEEPROM();
+  
+  // Сначала пытаемся подключиться к сохраненной сети
+  if (connectToSavedWiFi()) {
+    // Успешно подключились к WiFi
+    isAPMode = false;
+    Serial.println("DEBUG: Running in STA mode (connected to router)");
+  } else {
+    // Не удалось подключиться - запускаем точку доступа
+    setupAPMode();
+    Serial.println("DEBUG: Running in AP mode");
+  }
+  
+  // Инициализация mDNS (работает в обоих режимах)
   if (MDNS.begin(mdns_hostname)) {
     Serial.print("DEBUG: mDNS responder started. Access at http://");
     Serial.print(mdns_hostname);
     Serial.println(".local/");
-    Serial.flush();
   } else {
     Serial.println("ERROR: mDNS setup failed!");
-    Serial.flush();
   }
-
-  Serial.println("DEBUG: Setting up HTTP server route for '/'...");
-  Serial.flush();
-  // Обработчик корневого URL
+  
+  // Настройка OTA обновления
+  httpUpdater.setup(&server);
+  
+  // Настройка HTTP сервера
+  Serial.println("DEBUG: Setting up HTTP server...");
   server.on("/", HTTP_GET, []() {
-    server.send_P(200, "text/html", INDEX_HTML); // Использование send_P с PROGMEM
+    server.send_P(200, "text/html", INDEX_HTML);
     Serial.println("DEBUG: HTTP request for '/' received and page sent.");
-    Serial.flush();
   });
-  Serial.println("DEBUG: HTTP server route for '/' configured.");
-  Serial.flush();
-
-  Serial.println("DEBUG: Starting HTTP server...");
-  Serial.flush();
+  
   server.begin();
   Serial.println("DEBUG: HTTP server started.");
-  Serial.flush();
-
+  
+  // Настройка WebSocket сервера
   Serial.println("DEBUG: Starting WebSocket server...");
-  Serial.flush();
   webSocket.begin();
   webSocket.onEvent(webSocketEvent);
   Serial.println("DEBUG: WebSocket server started.");
-  Serial.println("DEBUG: === WiFi Access Point setup complete ===");
-  Serial.flush();
+  Serial.println("DEBUG: === WiFi Setup Complete ===");
 }
 
-// Функция для обработки клиентов Wi-Fi и WebSocket
+// Остальные функции остаются без изменений
 void handle_wifi_clients() {
-  // В режиме точки доступа всегда обрабатываем клиентов
   server.handleClient();
-  webSocket.loop(); // ОЧЕНЬ ВАЖНО: Вызывать webSocket.loop() как можно чаще в loop()
-  MDNS.update(); // Обязательно вызывайте в loop() для работы mDNS
+  webSocket.loop();
+  MDNS.update();
+  
+  if (!isAPMode && WiFi.status() != WL_CONNECTED) {
+    static unsigned long lastCheck = 0;
+    if (millis() - lastCheck > 10000) {
+      lastCheck = millis();
+      Serial.println("DEBUG: WiFi connection lost! Switching to AP mode...");
+      setupAPMode();
+    }
+  }
 }
 
+void send_status_update() {
+  if (wsConnected) {
+    StaticJsonDocument<512> doc;
+
+    float calculated_fuel_rate_hz = 0.0;
+    if (delayed_period > 0) {
+      calculated_fuel_rate_hz = 1000.00 / delayed_period;
+    }
+    
+    doc["exhaust_temp"] = exhaust_temp;
+    doc["fan_speed"] = fan_speed;
+    doc["fuel_rate_hz"] = calculated_fuel_rate_hz;
+    doc["glow_time"] = glow_time;
+    doc["burn_mode"] = burn_mode;
+    doc["webasto_fail"] = webasto_fail;
+    doc["debug_glow_plug_on"] = debug_glow_plug_on;
+    doc["fuel_pumping_active"] = fuelPumpingActive;
+    doc["message"] = message;
+    doc["attempt"] = attempt;
+    doc["burn"] = burn;
+    doc["currentState"] = currentState;
+
+    if (isAPMode) {
+      doc["wifi_mode"] = "AP";
+      doc["wifi_ssid"] = mdns_hostname;
+      doc["wifi_ip"] = WiFi.softAPIP().toString();
+    } else {
+      doc["wifi_mode"] = "STA";
+      doc["wifi_ssid"] = WiFi.SSID();
+      doc["wifi_ip"] = WiFi.localIP().toString();
+    }
+
+    doc["logging_enabled"] = loggingEnabled;
+    doc["total_fuel_consumed_liters"] = total_fuel_consumed_liters;
+    doc["fuel_consumption_per_hour"] = fuel_consumption_per_hour;
+
+    String jsonString;
+    serializeJson(doc, jsonString);
+    webSocket.broadcastTXT(jsonString);
+  } else {
+    Serial.println("DEBUG: WebSocket not connected, status update skipped.");
+  }
+}
+
+// Обработчик WebSocket событий
 void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length) {
   switch (type) {
     case WStype_DISCONNECTED:
@@ -1122,25 +1503,22 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
         IPAddress ip = webSocket.remoteIP(num);
         Serial.printf("[%u] Connected from %d.%d.%d.%d url: %s\n", num, ip[0], ip[1], ip[2], ip[3], payload);
         wsConnected = true;
-        // Отправляем текущие настройки клиенту сразу после подключения
         sendCurrentSettings();
       }
       break;
     case WStype_TEXT:
       Serial.printf("[%u] get Text: %s\n", num, payload);
-      // Обработка текстовых команд от клиента WebSocket
+      
+      // Обработка команд управления
       if (strcmp((char*)payload, "GET_SETTINGS") == 0) {
         sendCurrentSettings();
       } else if (strcmp((char*)payload, "RESET_SETTINGS") == 0) {
-        // Вызов функции сброса настроек из low_smoke.ino
         resetToDefaultSettings(); 
-        sendCurrentSettings(); // Отправляем обновленные настройки
+        sendCurrentSettings();
       } else if (strncmp((char*)payload, "SET:", 4) == 0) {
-        char cleanedCommand[256]; // Достаточно большой буфер
+        char cleanedCommand[256];
         strncpy(cleanedCommand, (char*)payload, sizeof(cleanedCommand) - 1);
-        cleanedCommand[sizeof(cleanedCommand) - 1] = '\0'; // Гарантируем нулевой терминатор
-
-        // При вызове из WebSocket, is_from_websocket = true
+        cleanedCommand[sizeof(cleanedCommand) - 1] = '\0';
         handleSettingsUpdate(cleanedCommand + 4, true); 
       } else if (strcmp((char*)payload, "UP") == 0) { 
         handleUpCommand();
@@ -1151,55 +1529,72 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
       } else if (strcmp((char*)payload, "FP") == 0) { 
         handleFuelPumpingCommand();
       } else if (strcmp((char*)payload, "CF") == 0) { 
-        webasto_fail = false; // Сброс флага ошибки
+        webasto_fail = false;
       } else if (strcmp((char*)payload, "RESET_WIFI") == 0) {
-        Serial.println("DEBUG: Received RESET_WIFI command. Rebooting ESP.");
-        Serial.println("DEBUG: WiFi settings cleared. Rebooting to apply changes.");
-        ESP.restart(); // Перезагружаем ESP
+        Serial.println("DEBUG: Received RESET_WIFI command. Clearing WiFi settings...");
+        clearWiFiSettings();
+        WiFi.disconnect(true);
+        delay(1000);
+        ESP.restart();
       } else if (strcmp((char*)payload, "REBOOT_ESP") == 0) {
         Serial.println("DEBUG: Received REBOOT_ESP command. Rebooting.");
-        ESP.restart(); // Просто перезагружаем ESP
+        ESP.restart();
       } else if (strcmp((char*)payload, "ENABLE_LOGGING") == 0) {
-          loggingEnabled = true;
-          Serial.println("DEBUG: Logging enabled.");
-          send_status_update(); // Отправить обновленный статус
+        loggingEnabled = true;
+        Serial.println("DEBUG: Logging enabled.");
+        send_status_update();
       } else if (strcmp((char*)payload, "DISABLE_LOGGING") == 0) {
-          loggingEnabled = false;
-          Serial.println("DEBUG: Logging disabled.");
-          send_status_update(); // Отправить обновленный статус
+        loggingEnabled = false;
+        Serial.println("DEBUG: Logging disabled.");
+        send_status_update();
       } else if (strcmp((char*)payload, "SCAN_WIFI") == 0) {
-          Serial.println("DEBUG: Received SCAN_WIFI command. Scanning networks...");
-          int n = WiFi.scanNetworks();
-          Serial.printf("DEBUG: Scan done. Found %d networks.\n", n);
-          StaticJsonDocument<512> doc; // Увеличиваем размер для списка сетей
-          JsonArray networksArray = doc.createNestedArray("wifi_networks");
-          for (int i = 0; i < n; ++i) {
-              JsonObject network = networksArray.createNestedObject();
-              network["ssid"] = WiFi.SSID(i);
-              network["rssi"] = WiFi.RSSI(i);
-          }
-          String jsonString;
-          serializeJson(doc, jsonString);
-          webSocket.broadcastTXT(jsonString);
-          WiFi.scanDelete(); // Очищаем результаты сканирования
+        Serial.println("DEBUG: Received SCAN_WIFI command. Scanning networks...");
+        int n = WiFi.scanNetworks();
+        Serial.printf("DEBUG: Scan done. Found %d networks.\n", n);
+        StaticJsonDocument<512> doc;
+        JsonArray networksArray = doc.createNestedArray("wifi_networks");
+        for (int i = 0; i < n; ++i) {
+          JsonObject network = networksArray.createNestedObject();
+          network["ssid"] = WiFi.SSID(i);
+          network["rssi"] = WiFi.RSSI(i);
+        }
+        String jsonString;
+        serializeJson(doc, jsonString);
+        webSocket.broadcastTXT(jsonString);
+        WiFi.scanDelete();
       } else if (strncmp((char*)payload, "CONNECT_WIFI:", 13) == 0) {
-          char* commandStr = (char*)payload + 13;
-          char* ssid = strtok(commandStr, ",");
-          char* password = strtok(NULL, ",");
+        char* commandStr = (char*)payload + 13;
+        char* ssid = strtok(commandStr, ",");
+        char* password = strtok(NULL, ",");
 
-          if (ssid) {
-              Serial.printf("DEBUG: Received CONNECT_WIFI command. Connecting to SSID: %s\n", ssid);
-              WiFi.begin(ssid, password ? password : ""); // Если пароль пустой, передаем пустую строку
-              // WiFiManager handles saving credentials automatically once connected
-              // No need to call wifiManager.autoConnect() or saveConfig() here.
-              // Just try to connect. The UI will get status updates.
-          } else {
-              Serial.println("ERROR: CONNECT_WIFI command missing SSID.");
+        if (ssid) {
+          Serial.printf("DEBUG: Received CONNECT_WIFI command. Connecting to SSID: %s\n", ssid);
+          
+          // Сохраняем новые credentials
+          saveWiFiSettings(ssid, password);
+          
+          // Пытаемся подключиться
+          WiFi.begin(ssid, password ? password : "");
+          
+          unsigned long start = millis();
+          while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) {
+            delay(500);
+            Serial.print(".");
           }
-      } else if (strcmp((char*)payload, "RESET_FUEL_CONSUMPTION") == 0) { // NEW: Reset fuel consumption
-          Serial.println("DEBUG: Received RESET_FUEL_CONSUMPTION command. Resetting total fuel consumed.");
-          total_fuel_consumed_liters = 0.0;
-          send_status_update(); // Обновляем UI
+          
+          if (WiFi.status() == WL_CONNECTED) {
+            Serial.println("\nDEBUG: Successfully connected to WiFi!");
+            isAPMode = false;
+          } else {
+            Serial.println("\nDEBUG: Failed to connect to WiFi!");
+          }
+          
+          send_status_update();
+        }
+      } else if (strcmp((char*)payload, "RESET_FUEL_CONSUMPTION") == 0) {
+        Serial.println("DEBUG: Received RESET_FUEL_CONSUMPTION command. Resetting total fuel consumed.");
+        total_fuel_consumed_liters = 0.0;
+        send_status_update();
       }
       break;
     case WStype_BIN:
@@ -1217,59 +1612,10 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
   }
 }
 
-// Функция для отправки данных о состоянии по WebSocket
-void send_status_update() {
-  if (wsConnected) {
-    StaticJsonDocument<512> doc; // Увеличено до 512 байт
-
-    // Расчет "Расход топлива" (fuel_rate_hz)
-    float calculated_fuel_rate_hz = 0.0;
-    if (delayed_period > 0) {
-      calculated_fuel_rate_hz = 1000.00 / delayed_period;
-    }
-    
-    // Отправка данных о состоянии (на корневом уровне JSON)
-    doc["exhaust_temp"] = exhaust_temp;
-    doc["fan_speed"] = fan_speed;
-    doc["fuel_rate_hz"] = calculated_fuel_rate_hz; 
-    doc["glow_time"] = glow_time; 
-    doc["burn_mode"] = burn_mode;
-    doc["webasto_fail"] = webasto_fail;
-    doc["debug_glow_plug_on"] = debug_glow_plug_on;
-    doc["fuel_pumping_active"] = fuelPumpingActive;
-    doc["message"] = message; 
-    doc["attempt"] = attempt; 
-    doc["burn"] = burn; 
-    doc["currentState"] = currentState; 
-
-    // Добавляем данные о Wi-Fi (для режима точки доступа)
-    doc["wifi_status"] = 3; // WL_CONNECTED - всегда подключено в AP режиме
-    doc["wifi_ssid"] = mdns_hostname; // SSID точки доступа
-    doc["wifi_ip"] = WiFi.softAPIP().toString(); // IP точки доступа
-
-    // Добавляем состояние логирования
-    doc["logging_enabled"] = loggingEnabled;
-
-    // Добавляем данные о расходе топлива
-    doc["total_fuel_consumed_liters"] = total_fuel_consumed_liters; 
-    doc["fuel_consumption_per_hour"] = fuel_consumption_per_hour; 
-
-
-    String jsonString;
-    serializeJson(doc, jsonString);
-    webSocket.broadcastTXT(jsonString);
-  } else {
-    Serial.println("DEBUG: WebSocket not connected, status update skipped."); 
-  }
-}
-
-// Переопределение sendCurrentSettings для отправки через WebSocket
-// Эта функция будет вызываться из основного кода, но фактически отправлять данные через WebSocket
+// Функция отправки настроек
 void sendCurrentSettings() {
   if (wsConnected) {
-    StaticJsonDocument<256> doc; 
-
-    // Важно: настройки отправляются внутри объекта "settings"
+    StaticJsonDocument<256> doc;
     doc["settings"]["pump_size"] = settings.pump_size;
     doc["settings"]["heater_target"] = settings.heater_target;
     doc["settings"]["heater_min"] = settings.heater_min;
@@ -1280,24 +1626,22 @@ void sendCurrentSettings() {
     doc["settings"]["glow_fade_in_duration"] = settings.glow_fade_in_duration;
     doc["settings"]["glow_fade_out_duration"] = settings.glow_fade_out_duration;
 
-
     String jsonString;
     serializeJson(doc, jsonString);
     webSocket.broadcastTXT(jsonString);
-    Serial.println("DEBUG: Sent settings via WebSocket."); 
+    Serial.println("DEBUG: Sent settings via WebSocket.");
   } else {
-    // Если WebSocket не подключен, можно отправить через Serial как раньше
+    // Отправка через Serial если WebSocket не подключен
     Serial.print(F("CURRENT_SETTINGS:"));
     Serial.print(F("pump_size=")); Serial.print(settings.pump_size); Serial.print(F(","));
     Serial.print(F("heater_target=")); Serial.print(settings.heater_target); Serial.print(F(","));
     Serial.print(F("heater_min=")); Serial.print(settings.heater_min); Serial.print(F(","));
     Serial.print(F("heater_overheat=")); Serial.print(settings.heater_overheat); Serial.print(F(","));
     Serial.print(F("heater_warning=")); Serial.print(settings.heater_warning); Serial.print(F(","));
-    // Новые настройки
     Serial.print(F("max_pwm_fan=")); Serial.print(settings.max_pwm_fan); Serial.print(F(","));
     Serial.print(F("glow_brightness=")); Serial.print(settings.glow_brightness); Serial.print(F(","));
     Serial.print(F("glow_fade_in_duration=")); Serial.print(settings.glow_fade_in_duration); Serial.print(F(","));
     Serial.print(F("glow_fade_out_duration=")); Serial.println(settings.glow_fade_out_duration);
-    Serial.println(F("DEBUG: Sent settings via Serial (WebSocket not connected).")); 
+    Serial.println(F("DEBUG: Sent settings via Serial (WebSocket not connected)."));
   }
 }

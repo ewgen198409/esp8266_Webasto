@@ -251,6 +251,7 @@ void setup() {
 
   // Инициализация Wi-Fi AP и веб-сервера
   setup_wifi_station();
+
 }
 
 void loop() {
