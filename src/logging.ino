@@ -6,6 +6,7 @@ extern float ds18b20_temp;
 // Добавляем extern для WiFi переменных
 extern bool isAPMode;
 extern const char* mdns_hostname;
+extern const char* FIRMWARE_VERSION;
 
 void logging(int ignit_fail, float temp_init, int seconds) {
   if (settingsUpdateInProgress) {
@@ -50,7 +51,7 @@ void logging(int ignit_fail, float temp_init, int seconds) {
   Serial.print(" | InTemp: ");
   Serial.println(ds18b20_temp);
   
-  // WiFi данные (третья строка) - НОВАЯ СТРОКА
+  // WiFi данные и версия firmware (третья строка) - НОВАЯ СТРОКА
   Serial.print("WIFI_STATUS:");
   Serial.print("mode=");
   Serial.print(isAPMode ? "AP" : "STA");
@@ -59,5 +60,7 @@ void logging(int ignit_fail, float temp_init, int seconds) {
   Serial.print(",ip=");
   Serial.print(isAPMode ? WiFi.softAPIP().toString() : WiFi.localIP().toString());
   Serial.print(",status=");
-  Serial.println(WiFi.status() == WL_CONNECTED ? "Connected" : "Disconnected");
+  Serial.print(WiFi.status() == WL_CONNECTED ? "Connected" : "Disconnected");
+  Serial.print(",fw=");
+  Serial.println(FIRMWARE_VERSION);
 }
