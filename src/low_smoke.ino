@@ -200,6 +200,10 @@ extern unsigned long glow_brightness_max; // Изменено на unsigned long
 extern unsigned long glow_fade_in_duration_ms; // Изменено на unsigned long
 extern unsigned long glow_fade_out_duration_ms; // Изменено на unsigned long
 
+// Добавьте после других extern объявлений
+extern const char* mdns_hostname;
+extern bool isAPMode;
+extern ESP8266WebServer server;
 
 void setup() {
   lcd.init(); // Инициализация дисплея
@@ -521,6 +525,11 @@ void processSerialCommands() {
       }
     }
 
+    // Добавьте в processSerialCommands() обработку WiFi статуса:
+    else if (strcmp(currentCommandPtr, "GET_WIFI_STATUS_DETAILED") == 0) {
+        sendDetailedWiFiStatus();
+    }
+
     else {
       /*
       Serial.print(F("DEBUG: Неизвестная команда или несоответствие: '"));
@@ -538,6 +547,46 @@ void processSerialCommands() {
     stringComplete = false;
     inputBufferIndex = 0; // ВАЖНО: Сбрасываем индекс здесь, после обработки
   }
+}
+
+void sendDetailedWiFiStatus() {
+    Serial.print(F("WIFI_STATUS_DETAILED:"));
+    Serial.print(F("mode=")); Serial.print(isAPMode ? "AP" : "STA");
+    
+    if (isAPMode) {
+        // Режим точки доступа - реальные данные
+        Serial.print(F(",ap_ssid=")); Serial.print(WiFi.softAPSSID());
+        Serial.print(F(",ap_ip=")); Serial.print(WiFi.softAPIP().toString());
+        Serial.print(F(",ap_clients=")); Serial.print(WiFi.softAPgetStationNum());
+        
+        Serial.print(F(",sta_ssid=none"));
+        Serial.print(F(",sta_ip=none"));
+        Serial.print(F(",sta_status=disconnected"));
+    } else {
+        // Режим клиента
+        Serial.print(F(",ap_ssid=espwebasto")); // Имя когда в режиме AP
+        Serial.print(F(",ap_ip=192.168.10.10")); // IP когда в режиме AP
+        
+        if (WiFi.status() == WL_CONNECTED) {
+            Serial.print(F(",sta_ssid=")); Serial.print(WiFi.SSID());
+            Serial.print(F(",sta_ip=")); Serial.print(WiFi.localIP().toString());
+            Serial.print(F(",sta_status=connected"));
+            Serial.print(F(",sta_gateway=")); Serial.print(WiFi.gatewayIP().toString());
+            Serial.print(F(",sta_dns=")); Serial.print(WiFi.dnsIP().toString());
+        } else {
+            Serial.print(F(",sta_ssid=none"));
+            Serial.print(F(",sta_ip=none"));
+            Serial.print(F(",sta_status=disconnected"));
+        }
+    }
+    
+    // Общая информация
+    Serial.print(F(",ap_password=12345678"));
+    Serial.print(F(",mac_address=")); Serial.print(WiFi.macAddress());
+    Serial.print(F(",signal_strength=")); Serial.print(WiFi.RSSI());
+    Serial.print(F(",channel=")); Serial.print(WiFi.channel());
+    
+    Serial.println();
 }
 
 // Обрабатывает команду "UP"
