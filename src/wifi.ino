@@ -1547,15 +1547,28 @@ void handle_wifi_clients() {
 }
 
 void sendWiFiStatus() {
-  Serial.print("WIFI_STATUS:");
-  Serial.print("mode=");
-  Serial.print(isAPMode ? "AP" : "STA");
-  Serial.print(",ssid=");
-  Serial.print(isAPMode ? mdns_hostname : WiFi.SSID().c_str());
-  Serial.print(",ip=");
-  Serial.print(isAPMode ? WiFi.softAPIP().toString() : WiFi.localIP().toString());
-  Serial.print(",status=");
-  Serial.println(WiFi.status() == WL_CONNECTED ? "Connected" : "Disconnected");
+  if (wsConnected) {
+    StaticJsonDocument<256> doc;
+    doc["wifi_mode"] = isAPMode ? "AP" : "STA";
+    doc["wifi_ssid"] = isAPMode ? mdns_hostname : WiFi.SSID();
+    doc["wifi_ip"] = isAPMode ? WiFi.softAPIP().toString() : WiFi.localIP().toString();
+    doc["wifi_status"] = WiFi.status() == WL_CONNECTED ? "Connected" : "Disconnected";
+    
+    String jsonString;
+    serializeJson(doc, jsonString);
+    webSocket.broadcastTXT(jsonString);
+  } else {
+    // Fallback to Serial if WebSocket not connected
+    Serial.print("WIFI_STATUS:");
+    Serial.print("mode=");
+    Serial.print(isAPMode ? "AP" : "STA");
+    Serial.print(",ssid=");
+    Serial.print(isAPMode ? mdns_hostname : WiFi.SSID().c_str());
+    Serial.print(",ip=");
+    Serial.print(isAPMode ? WiFi.softAPIP().toString() : WiFi.localIP().toString());
+    Serial.print(",status=");
+    Serial.println(WiFi.status() == WL_CONNECTED ? "Connected" : "Disconnected");
+  }
 }
 
 void send_status_update() {
@@ -1610,118 +1623,69 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
       Serial.printf("[%u] Disconnected!\n", num);
       wsConnected = false;
       break;
+      
     case WStype_CONNECTED: {
         IPAddress ip = webSocket.remoteIP(num);
         Serial.printf("[%u] Connected from %d.%d.%d.%d url: %s\n", num, ip[0], ip[1], ip[2], ip[3], payload);
         wsConnected = true;
-        sendCurrentSettings();
+        sendCurrentSettings(); // Отправляем настройки при подключении
       }
       break;
-    case WStype_TEXT:
-      Serial.printf("[%u] get Text: %s\n", num, payload);
       
-      // Обработка команд управления
-      if (strcmp((char*)payload, "GET_SETTINGS") == 0) {
-        sendCurrentSettings();
-      } else if (strcmp((char*)payload, "RESET_SETTINGS") == 0) {
-        resetToDefaultSettings(); 
-        sendCurrentSettings();
-      } else if (strncmp((char*)payload, "SET:", 4) == 0) {
-        char cleanedCommand[256];
-        strncpy(cleanedCommand, (char*)payload, sizeof(cleanedCommand) - 1);
-        cleanedCommand[sizeof(cleanedCommand) - 1] = '\0';
-        handleSettingsUpdate(cleanedCommand + 4, true); 
-      } else if (strcmp((char*)payload, "UP") == 0) { 
-        handleUpCommand();
-      } else if (strcmp((char*)payload, "DOWN") == 0) { 
-        handleDownCommand();
-      } else if (strcmp((char*)payload, "ENTER") == 0) { 
-        handleEnterCommand();
-      } else if (strcmp((char*)payload, "FP") == 0) { 
-        handleFuelPumpingCommand();
-      } else if (strcmp((char*)payload, "CF") == 0) { 
-        webasto_fail = false;
-      } else if (strcmp((char*)payload, "RESET_WIFI") == 0) {
-        Serial.println("DEBUG: Received RESET_WIFI command. Clearing WiFi settings...");
-        clearWiFiSettings();
-        WiFi.disconnect(true);
-        delay(1000);
-        ESP.restart();
-      } else if (strcmp((char*)payload, "REBOOT_ESP") == 0) {
-        Serial.println("DEBUG: Received REBOOT_ESP command. Rebooting.");
-        ESP.restart();
-      } else if (strcmp((char*)payload, "ENABLE_LOGGING") == 0) {
-        loggingEnabled = true;
-        Serial.println("DEBUG: Logging enabled.");
-        send_status_update();
-      } else if (strcmp((char*)payload, "DISABLE_LOGGING") == 0) {
-        loggingEnabled = false;
-        Serial.println("DEBUG: Logging disabled.");
-        send_status_update();
-      } else if (strcmp((char*)payload, "SCAN_WIFI") == 0) {
-        Serial.println("DEBUG: Received SCAN_WIFI command. Scanning networks...");
-        int n = WiFi.scanNetworks();
-        Serial.printf("DEBUG: Scan done. Found %d networks.\n", n);
-        StaticJsonDocument<512> doc;
-        JsonArray networksArray = doc.createNestedArray("wifi_networks");
-        for (int i = 0; i < n; ++i) {
-          JsonObject network = networksArray.createNestedObject();
-          network["ssid"] = WiFi.SSID(i);
-          network["rssi"] = WiFi.RSSI(i);
-        }
-        String jsonString;
-        serializeJson(doc, jsonString);
-        webSocket.broadcastTXT(jsonString);
-        WiFi.scanDelete();
-      } else if (strncmp((char*)payload, "CONNECT_WIFI:", 13) == 0) {
-        char* commandStr = (char*)payload + 13;
-        char* ssid = strtok(commandStr, ",");
-        char* password = strtok(NULL, ",");
-
-        if (ssid) {
-          Serial.printf("DEBUG: Received CONNECT_WIFI command. Connecting to SSID: %s\n", ssid);
-          
-          // Сохраняем новые credentials
-          saveWiFiSettings(ssid, password);
-          
-          // Пытаемся подключиться
-          WiFi.begin(ssid, password ? password : "");
-          
-          unsigned long start = millis();
-          while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) {
-            delay(500);
-            Serial.print(".");
+    case WStype_TEXT: {
+        Serial.printf("[%u] get Text: %s\n", num, payload);
+        
+        // Передаем команду в единый обработчик из low_smoke.ino
+        String command = String((char*)payload);
+        handleSerialCommand(command);
+        
+        // Для команд, требующих специальной обработки WebSocket
+        if (strcmp((char*)payload, "SCAN_WIFI") == 0) {
+          // Сканирование WiFi требует отправки результатов через WebSocket
+          Serial.println("DEBUG: Received SCAN_WIFI command. Scanning networks...");
+          int n = WiFi.scanNetworks();
+          Serial.printf("DEBUG: Scan done. Found %d networks.\n", n);
+          StaticJsonDocument<512> doc;
+          JsonArray networksArray = doc.createNestedArray("wifi_networks");
+          for (int i = 0; i < n; ++i) {
+            JsonObject network = networksArray.createNestedObject();
+            network["ssid"] = WiFi.SSID(i);
+            network["rssi"] = WiFi.RSSI(i);
           }
-          
-          if (WiFi.status() == WL_CONNECTED) {
-            Serial.println("\nDEBUG: Successfully connected to WiFi!");
-            isAPMode = false;
-          } else {
-            Serial.println("\nDEBUG: Failed to connect to WiFi!");
-          }
-          
-          send_status_update();
+          String jsonString;
+          serializeJson(doc, jsonString);
+          webSocket.broadcastTXT(jsonString);
+          WiFi.scanDelete();
         }
-      } else if (strcmp((char*)payload, "RESET_FUEL_CONSUMPTION") == 0) {
-        Serial.println("DEBUG: Received RESET_FUEL_CONSUMPTION command. Resetting total fuel consumed.");
-        total_fuel_consumed_liters = 0.0;
-        send_status_update();
-
-        // В разделе обработки WebSocket команд добавьте:
-      } else if (strcmp((char*)payload, "GET_WIFI_STATUS") == 0) {
-        sendWiFiStatus();
+        else if (strcmp((char*)payload, "GET_WIFI_STATUS") == 0) {
+          sendWiFiStatus(); // Отправка статуса WiFi через WebSocket
+        }
       }
-
       break;
+      
     case WStype_BIN:
+      // Обработка бинарных данных (если нужно)
+      break;
+      
     case WStype_ERROR:
+      Serial.printf("[%u] WebSocket Error!\n", num);
+      break;
+      
     case WStype_FRAGMENT_TEXT_START:
     case WStype_FRAGMENT_BIN_START:
     case WStype_FRAGMENT:
     case WStype_FRAGMENT_FIN:
-    case WStype_PING: 
-    case WStype_PONG: 
+      // Фрагментированные сообщения (обычно не используются)
       break;
+      
+    case WStype_PING:
+      Serial.printf("[%u] WebSocket Ping\n", num);
+      break;
+      
+    case WStype_PONG:
+      Serial.printf("[%u] WebSocket Pong\n", num);
+      break;
+      
     default:
       Serial.printf("[%u] Unhandled WebSocket Event Type: %d\n", num, type);
       break;
