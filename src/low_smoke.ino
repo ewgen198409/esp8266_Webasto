@@ -184,6 +184,13 @@ void display_data(); // Добавлено объявление функции d
 void setup_wifi_ap();
 void handle_wifi_clients();
 void send_status_update();
+
+// Объявления функций из wifi.ino
+void sendWiFiStatus();
+void clearWiFiSettings();
+void saveWiFiSettings(const char* ssid, const char* password);
+extern bool isAPMode; // Добавьте эту строку
+
 // Переопределение sendCurrentSettings, чтобы она вызывала версию из wifi.ino
 extern void sendCurrentSettings();
 
@@ -450,6 +457,70 @@ void processSerialCommands() {
       send_status_update(); // Обновляем UI
       Serial.println(F("FUEL_RESET_OK"));
     }
+
+    // ДОБАВЛЕНО: Обработка WiFi команд
+    else if (strcmp(currentCommandPtr, "GET_WIFI_STATUS") == 0) {
+      sendWiFiStatus();
+    }
+
+    else if (strcmp(currentCommandPtr, "RESET_WIFI") == 0) {
+      Serial.println(F("DEBUG: Received RESET_WIFI command. Clearing WiFi settings..."));
+      clearWiFiSettings();
+      WiFi.disconnect(true);
+      delay(1000);
+      ESP.restart();
+    }
+
+    else if (strcmp(currentCommandPtr, "REBOOT_ESP") == 0) {
+      Serial.println(F("DEBUG: Received REBOOT_ESP command. Rebooting."));
+      ESP.restart();
+    }
+
+    else if (strcmp(currentCommandPtr, "SCAN_WIFI") == 0) {
+      Serial.println(F("DEBUG: Received SCAN_WIFI command. Scanning networks..."));
+      int n = WiFi.scanNetworks();
+      Serial.printf("DEBUG: Scan done. Found %d networks.\n", n);
+      // Отправляем результаты сканирования через Serial
+      Serial.println("WIFI_SCAN_START");
+      for (int i = 0; i < n; ++i) {
+        Serial.printf("SSID: %s, RSSI: %d\n", WiFi.SSID(i).c_str(), WiFi.RSSI(i));
+      }
+      Serial.println("WIFI_SCAN_END");
+      WiFi.scanDelete();
+    }
+
+    else if (strncmp(currentCommandPtr, "CONNECT_WIFI:", 13) == 0) {
+      char* params = currentCommandPtr + 13;
+      char* ssid = strtok(params, ",");
+      char* password = strtok(NULL, ",");
+
+      if (ssid) {
+        Serial.printf("DEBUG: Received CONNECT_WIFI command. Connecting to SSID: %s\n", ssid);
+        
+        // Сохраняем новые credentials
+        saveWiFiSettings(ssid, password);
+        
+        // Пытаемся подключиться
+        WiFi.begin(ssid, password ? password : "");
+        
+        unsigned long start = millis();
+        while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) {
+          delay(500);
+          Serial.print(".");
+        }
+        
+        if (WiFi.status() == WL_CONNECTED) {
+          Serial.println("\nDEBUG: Successfully connected to WiFi!");
+          isAPMode = false;
+        } else {
+          Serial.println("\nDEBUG: Failed to connect to WiFi!");
+        }
+        
+        // Отправляем обновленный статус
+        sendWiFiStatus();
+      }
+    }
+
     else {
       /*
       Serial.print(F("DEBUG: Неизвестная команда или несоответствие: '"));

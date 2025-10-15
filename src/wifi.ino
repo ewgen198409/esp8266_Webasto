@@ -78,6 +78,8 @@ extern void resetToDefaultSettings();
 // Переменная для отслеживания подключения WebSocket
 bool wsConnected = false;
 
+void handleSerialCommand(String command);
+
 // HTML-страница для веб-интерфейса (ВОССТАНОВЛЕНА ПОЛНАЯ ВЕРСИЯ)
 // Использование const char PROGMEM для хранения больших строк во флеш-памяти
 const char PROGMEM INDEX_HTML[] = R"rawliteral(
@@ -1544,6 +1546,18 @@ void handle_wifi_clients() {
   }
 }
 
+void sendWiFiStatus() {
+  Serial.print("WIFI_STATUS:");
+  Serial.print("mode=");
+  Serial.print(isAPMode ? "AP" : "STA");
+  Serial.print(",ssid=");
+  Serial.print(isAPMode ? mdns_hostname : WiFi.SSID().c_str());
+  Serial.print(",ip=");
+  Serial.print(isAPMode ? WiFi.softAPIP().toString() : WiFi.localIP().toString());
+  Serial.print(",status=");
+  Serial.println(WiFi.status() == WL_CONNECTED ? "Connected" : "Disconnected");
+}
+
 void send_status_update() {
   if (wsConnected) {
     StaticJsonDocument<512> doc;
@@ -1692,7 +1706,12 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
         Serial.println("DEBUG: Received RESET_FUEL_CONSUMPTION command. Resetting total fuel consumed.");
         total_fuel_consumed_liters = 0.0;
         send_status_update();
+
+        // В разделе обработки WebSocket команд добавьте:
+      } else if (strcmp((char*)payload, "GET_WIFI_STATUS") == 0) {
+        sendWiFiStatus();
       }
+
       break;
     case WStype_BIN:
     case WStype_ERROR:
@@ -1742,3 +1761,94 @@ void sendCurrentSettings() {
     Serial.println(F("DEBUG: Sent settings via Serial (WebSocket not connected)."));
   }
 }
+
+// Добавьте функцию обработки Serial команд
+void handleSerialCommand(String command) {
+  Serial.printf("DEBUG: Received Serial command: %s\n", command.c_str());
+  
+  // Обработка команд, аналогично WebSocket
+  if (command == "GET_WIFI_STATUS") {
+    sendWiFiStatus();
+  } else if (command == "RESET_WIFI") {
+    Serial.println("DEBUG: Received RESET_WIFI command. Clearing WiFi settings...");
+    clearWiFiSettings();
+    WiFi.disconnect(true);
+    delay(1000);
+    ESP.restart();
+  } else if (command == "REBOOT_ESP") {
+    Serial.println("DEBUG: Received REBOOT_ESP command. Rebooting.");
+    ESP.restart();
+  } else if (command == "SCAN_WIFI") {
+    Serial.println("DEBUG: Received SCAN_WIFI command. Scanning networks...");
+    int n = WiFi.scanNetworks();
+    Serial.printf("DEBUG: Scan done. Found %d networks.\n", n);
+    // Отправляем результаты сканирования через Serial
+    Serial.println("WIFI_SCAN_START");
+    for (int i = 0; i < n; ++i) {
+      Serial.printf("SSID: %s, RSSI: %d\n", WiFi.SSID(i).c_str(), WiFi.RSSI(i));
+    }
+    Serial.println("WIFI_SCAN_END");
+    WiFi.scanDelete();
+  } else if (command.startsWith("CONNECT_WIFI:")) {
+    String params = command.substring(13);
+    int commaIndex = params.indexOf(',');
+    String ssid = params.substring(0, commaIndex);
+    String password = params.substring(commaIndex + 1);
+    
+    Serial.printf("DEBUG: Received CONNECT_WIFI command. Connecting to SSID: %s\n", ssid.c_str());
+    
+    // Сохраняем новые credentials
+    saveWiFiSettings(ssid.c_str(), password.c_str());
+    
+    // Пытаемся подключиться
+    WiFi.begin(ssid.c_str(), password.c_str());
+    
+    unsigned long start = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) {
+      delay(500);
+      Serial.print(".");
+    }
+    
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.println("\nDEBUG: Successfully connected to WiFi!");
+      isAPMode = false;
+    } else {
+      Serial.println("\nDEBUG: Failed to connect to WiFi!");
+    }
+    
+    // Отправляем обновленный статус
+    sendWiFiStatus();
+  } else if (command == "GET_SETTINGS") {
+    sendCurrentSettings();
+  } else if (command == "RESET_SETTINGS") {
+    resetToDefaultSettings(); 
+    sendCurrentSettings();
+  } else if (command.startsWith("SET:")) {
+    String paramsStr = command.substring(4);
+    char params[256];
+    strncpy(params, paramsStr.c_str(), sizeof(params));
+    handleSettingsUpdate(params, false); // false - означает, что команда пришла не из WebSocket
+  } else if (command == "UP") {
+    handleUpCommand();
+  } else if (command == "DOWN") {
+    handleDownCommand();
+  } else if (command == "ENTER") {
+    handleEnterCommand();
+  } else if (command == "FP") {
+    handleFuelPumpingCommand();
+  } else if (command == "CF") {
+    webasto_fail = false;
+  } else if (command == "ENABLE_LOGGING") {
+    loggingEnabled = true;
+    Serial.println("DEBUG: Logging enabled.");
+  } else if (command == "DISABLE_LOGGING") {
+    loggingEnabled = false;
+    Serial.println("DEBUG: Logging disabled.");
+  } else if (command == "RESET_FUEL_CONSUMPTION") {
+    Serial.println("DEBUG: Received RESET_FUEL_CONSUMPTION command. Resetting total fuel consumed.");
+    total_fuel_consumed_liters = 0.0;
+  } else {
+    Serial.printf("DEBUG: Unknown Serial command: %s\n", command.c_str());
+  }
+}
+
