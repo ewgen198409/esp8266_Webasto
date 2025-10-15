@@ -43,7 +43,7 @@ WiFiSettings storedWiFi;
 // Адреса в EEPROM для хранения настроек
 // Используем область после настроек из low_smoke.ino
 const int EEPROM_SIZE = 512;
-const int WIFI_SETTINGS_ADDR = 200; // Начинаем после настроек из low_smoke.ino
+const int WIFI_SETTINGS_ADDR = 250; // Начинаем после настроек из low_smoke.ino
 
 // Объявление внешних переменных
 extern float exhaust_temp;
@@ -66,7 +66,6 @@ extern int max_pwm_global;
 extern unsigned long glow_brightness_max;
 extern unsigned long glow_fade_in_duration_ms;
 extern unsigned long glow_fade_out_duration_ms;
-extern float ds18b20_temp;
 
 // Объявление внешних функций
 extern void handleUpCommand();
@@ -606,7 +605,6 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
                         <span id="burnStatusIndicator" class="status-indicator status-off"></span>
                     </div>
                     <div class="status-item">Температура выхлопа: <span id="exhaustTemp" class="font-bold">--</span> &deg;C</div>
-                    <div class="status-item">Температура впуска: <span id="intakeTemp" class="font-bold">--</span> &deg;C</div>
                     <div class="status-item">Скорость вентилятора: <span id="fanSpeed" class="font-bold">--</span> %</div>
                     <div class="status-item">Расход топлива: <span id="fuelRateHz" class="font-bold">--</span> Гц</div>
                     <div class="status-item">
@@ -1057,7 +1055,6 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
 
             // Основные данные состояния
             document.getElementById('exhaustTemp').textContent = data.exhaust_temp !== undefined ? data.exhaust_temp.toFixed(1) : '--';
-            document.getElementById('intakeTemp').textContent = data.ds18b20_temp !== undefined ? data.ds18b20_temp.toFixed(1) : '--';
             document.getElementById('fanSpeed').textContent = data.fan_speed !== undefined ? data.fan_speed.toFixed(0) : '--';
             document.getElementById('fuelRateHz').textContent = data.fuel_rate_hz !== undefined ? data.fuel_rate_hz.toFixed(2) : '--';
 
@@ -1557,7 +1554,6 @@ void send_status_update() {
     }
 
     doc["exhaust_temp"] = exhaust_temp;
-    doc["ds18b20_temp"] = ds18b20_temp;
     doc["fan_speed"] = fan_speed;
     doc["fuel_rate_hz"] = calculated_fuel_rate_hz;
     doc["glow_time"] = glow_time;
