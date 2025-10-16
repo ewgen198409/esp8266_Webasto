@@ -119,30 +119,26 @@ void webasto() {
         if(seconds > 0 && seconds < 5) {
           // Плавное увеличение скорости (например, на 5% за итерацию)
           if (fan_speed < prime_fan_speed) {
-              fan_speed += (prime_fan_speed - fan_speed) * 0.005;
+              fan_speed += (prime_fan_speed - fan_speed) * 0.1;
               // Проверка на достижение целевой скорости с небольшим допуском
-              if (prime_fan_speed - fan_speed < 0.1) {
-                  fan_speed = prime_fan_speed;
-              }
+          } else {
+              fan_speed = prime_fan_speed;
           }
-
           fuel_need = 0;
           message = "Clearing";
         }
 
         // Подготовка к розжигу
-        if(seconds >= 6 && seconds <= 9) {
+        if(seconds >= 6 && seconds <= 11) {
               // Плавное увеличение скорости (например, на 5% за итерацию)
           if (fan_speed > start_fan_speed) {
-              fan_speed -= (fan_speed - start_fan_speed) * 0.005;
+              fan_speed -= (fan_speed - start_fan_speed) * 0.05;
               // Проверка на достижение целевой скорости
-              if (fan_speed - start_fan_speed < 0.1) {
-                  fan_speed = start_fan_speed;
-              }
+          } else {
+              fan_speed = start_fan_speed;
           }
           glow_time = 100;
           message = "Prime";
-
         }
 
         // Инициализация температуры и таймера вентилятора
@@ -153,7 +149,7 @@ void webasto() {
 
 
         // подача топлива перед розжигом
-        if (seconds > 38 && seconds < 40) {
+        if (seconds > 37 && seconds < 40) {
           fuel_need = prime_ratio(exhaust_temp);
         } 
 
@@ -173,7 +169,7 @@ void webasto() {
           }
         }
 
-        // Если температура выхлопа поднялась, значит огонь зажегся
+        // Если температура выхлопа поднялась на 3 градуса, значит огонь зажегся
         if (exhaust_temp - temp_init > 3 && seconds >=60) {
           burn_mode = 2;
           seconds = 0;
@@ -223,11 +219,6 @@ void webasto() {
 
         // =========================================================================
 
-        // выключаем свечу когда температура выше 70 градусов
-        if (exhaust_temp > 70) {
-          glow_time = 0;
-        }
-
         // Если температура нагревателя ниже критической и нет ошибок
         if (exhaust_temp < heater_overheat && !webasto_fail) {
 
@@ -248,14 +239,18 @@ void webasto() {
               } else if (currentState == 2) {                                       // LOW
                 fuel_need += (final_fuel-1.67)/full_power_increment_time/3;         // 5.0
               }
-              // }
-
               fan_timer = millis();
             }
+
           } else {
             fan_speed = final_fan_speed;
             running_ratio(exhaust_temp);
           }
+        }
+
+        // выключаем свечу когда температура выше 70 градусов
+        if (exhaust_temp > 70) {
+          glow_time = 0;
         }
 
         // Если перегрев или ошибка
@@ -281,31 +276,30 @@ void webasto() {
 
     case 3: {  
                                                     // Затухание огня, выключение
-        if(exhaust_temp > 150) {                           // пока температура выше 150
+        if(exhaust_temp > 100) {                           // пока температура выше 100
           // Плавное увеличение до 80%
           float target_speed = 80.0f;
           float difference = target_speed - fan_speed;
 
-          if (fabs(difference) > 0.05f) {                    // Если еще не достигли почти 80%
-              fan_speed += difference * 0.001f;              // Очень медленное увеличение
+          if (fan_speed != target_speed) {                    // Если еще не достигли почти 80%
+              fan_speed += difference * 0.1f;              // Очень медленное увеличение
           } else {
               fan_speed = target_speed;                      // Фиксируем 80%, если близко
           }
         } else {                                          // если ниже 150
-          glow_time = 0;                                  // выключаем свечу
 
           // Плавное снижение до 50%
           float target_speed = 50.0f;
           float difference = fan_speed - target_speed;
 
-          if (fabs(difference) > 0.05f) {                     // Если еще не достигли почти 50%
-              fan_speed -= difference * 0.001f;                // Очень медленное снижение
+          if (fan_speed != target_speed) {                     // Если еще не достигли почти 50%
+              fan_speed -= difference * 0.1f;                // Очень медленное снижение
           } else {
               fan_speed = target_speed;                         // Фиксируем 50%, если близко
           }
         }
-        glow_time = 10;
-        if (seconds > 10) {
+        glow_time = 15;
+        if (seconds > 15) {
           glow_time = 0;
         }
         fuel_need = 0;

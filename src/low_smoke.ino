@@ -14,6 +14,24 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
+// Добавьте в начало файла
+#include <LittleFS.h>
+
+// OTA константы и переменные
+const int OTA_BUFFER_SIZE = 512;
+const unsigned long OTA_TIMEOUT = 600000; // 10 минут таймаут
+const size_t MAX_FIRMWARE_SIZE = 1048576; // Макс. размер прошивки 1MB
+
+bool otaInProgress = false;
+bool otaWriteInProgress = false;
+unsigned long otaStartTime = 0;
+size_t otaTotalSize = 0;
+size_t otaReceived = 0;
+File otaFile;
+
+// Флаг OTA в EEPROM
+const int OTA_FLAG_ADDR = 500;
+
 OneWire oneWire(D0); // Пин D0 для датчика DS18B20
 DallasTemperature sensors(&oneWire);
 float ds18b20_temp; // Переменная для хранения температуры с DS18B20
@@ -190,6 +208,8 @@ void sendWiFiStatus();
 void clearWiFiSettings();
 void saveWiFiSettings(const char* ssid, const char* password);
 extern bool isAPMode; // Добавьте эту строку
+extern const char* FIRMWARE_VERSION;
+
 
 // Переопределение sendCurrentSettings, чтобы она вызывала версию из wifi.ino
 extern void sendCurrentSettings();
@@ -209,7 +229,15 @@ void setup() {
   lcd.init(); // Инициализация дисплея
   lcd.backlight(); // Включение подсветки
 
-
+  // Инициализация LittleFS
+  if (!LittleFS.begin()) {
+      Serial.println(F("FS_FAIL: Failed to mount LittleFS"));
+  } else {
+      Serial.println(F("FS_OK: LittleFS mounted"));
+  }
+    
+    // Проверяем флаг OTA при запуске
+  handleOTAUpdate();
 
   // Создаем пользовательские символы
   lcd.createChar(7, contour);   // контур
@@ -263,6 +291,39 @@ void setup() {
   // Инициализация Wi-Fi AP и веб-сервера
   setup_wifi_station();
 
+}
+
+// Функция проверки флага OTA при запуске
+void checkOTAFlag() {
+    byte otaFlag = EEPROM.read(OTA_FLAG_ADDR);
+    if (otaFlag == 0xAA) {
+        Serial.println(F("BOOT: OTA flag detected"));
+        
+        // Сбрасываем флаг
+        EEPROM.write(OTA_FLAG_ADDR, 0x00);
+        EEPROM.commit();
+        
+        // Проверяем наличие файла прошивки
+        if (LittleFS.exists("/firmware.bin")) {
+            Serial.println(F("BOOT: Firmware file found"));
+            File fwFile = LittleFS.open("/firmware.bin", "r");
+            if (fwFile) {
+                size_t fwSize = fwFile.size();
+                fwFile.close();
+                Serial.print(F("BOOT: Firmware size: "));
+                Serial.println(fwSize);
+                
+                if (fwSize > 100000) {
+                    Serial.println(F("BOOT: Valid firmware ready for update"));
+                } else {
+                    Serial.println(F("BOOT: Invalid firmware size"));
+                    LittleFS.remove("/firmware.bin");
+                }
+            }
+        } else {
+            Serial.println(F("BOOT: No firmware file found"));
+        }
+    }
 }
 
 void loop() {
@@ -364,19 +425,27 @@ void applySettings() {
   Serial.println(F("EEPROM: Настройки применены."));
 }
 
-// Обрабатывает входящие данные из последовательного порта
+// Обновите serialEvent() для обработки бинарных данных OTA
 void serialEvent() {
-  while (Serial.available()) {
-    char inChar = (char)Serial.read();
-    if (inChar == '\n') { // Обрабатываем и \n как конец строки
-      if (inputBufferIndex > 0) { // Обрабатываем только если есть данные
-         inputBuffer[inputBufferIndex] = '\0'; // Добавляем нулевой терминатор
-         stringComplete = true;
-      }
-    } else if (inputBufferIndex < (SERIAL_BUFFER_SIZE - 1)) {
-      inputBuffer[inputBufferIndex++] = inChar;
+    while (Serial.available()) {
+        if (otaInProgress && otaWriteInProgress) {
+            // В режиме OTA читаем бинарные данные
+            uint8_t buffer[OTA_BUFFER_SIZE];
+            size_t length = Serial.readBytes(buffer, OTA_BUFFER_SIZE);
+            handleOTAData(buffer, length);
+        } else {
+            // Обычный текстовый режим
+            char inChar = (char)Serial.read();
+            if (inChar == '\n') {
+                if (inputBufferIndex > 0) {
+                    inputBuffer[inputBufferIndex] = '\0';
+                    stringComplete = true;
+                }
+            } else if (inputBufferIndex < (SERIAL_BUFFER_SIZE - 1)) {
+                inputBuffer[inputBufferIndex++] = inChar;
+            }
+        }
     }
-  }
 }
 
 // Разбирает и выполняет команды, полученные по последовательному порту
@@ -528,6 +597,41 @@ void processSerialCommands() {
     // Добавьте в processSerialCommands() обработку WiFi статуса:
     else if (strcmp(currentCommandPtr, "GET_WIFI_STATUS_DETAILED") == 0) {
         sendDetailedWiFiStatus();
+    }
+
+    // Добавьте в processSerialCommands() обработку OTA команд
+    else if (strcmp(currentCommandPtr, "START_OTA") == 0) {
+        startOTAUpdate();
+    }
+    else if (strcmp(currentCommandPtr, "CANCEL_OTA") == 0) {
+        cancelOTAUpdate();
+    }
+    else if (strcmp(currentCommandPtr, "APPLY_OTA") == 0) {
+        applyOTAUpdate();
+    }
+    else if (strcmp(currentCommandPtr, "GET_FIRMWARE_VERSION") == 0) {
+        Serial.print(F("FIRMWARE_VERSION:"));
+        Serial.println(FIRMWARE_VERSION);
+    }
+    else if (strcmp(currentCommandPtr, "GET_FS_INFO") == 0) {
+        FSInfo fs_info;
+        if (LittleFS.info(fs_info)) {
+            Serial.print(F("FS_TOTAL:"));
+            Serial.print(fs_info.totalBytes);
+            Serial.print(F(",FS_USED:"));
+            Serial.print(fs_info.usedBytes);
+            Serial.print(F(",FS_FREE:"));
+            Serial.println(fs_info.totalBytes - fs_info.usedBytes);
+        } else {
+            Serial.println(F("FS_INFO_FAIL"));
+        }
+    }
+    else if (strcmp(currentCommandPtr, "END_OTA") == 0) {
+        if (otaInProgress && otaWriteInProgress) {
+            completeOTAWrite();
+        } else {
+            Serial.println(F("OTA_NOT_ACTIVE"));
+        }
     }
 
     else {
@@ -813,7 +917,178 @@ void runFuelPumpingRoutine() {
   }
 }
 
+// OTA функции
+void startOTAUpdate() {
+    if (otaInProgress) {
+        Serial.println(F("OTA_ALREADY_IN_PROGRESS"));
+        return;
+    }
+    
+    // Проверяем свободное место в FS
+    FSInfo fs_info;
+    if (!LittleFS.info(fs_info)) {
+        Serial.println(F("OTA_FS_INFO_FAIL"));
+        return;
+    }
+    
+    size_t freeSpace = fs_info.totalBytes - fs_info.usedBytes;
+    if (freeSpace < 500000) { // Минимум 500KB свободного места
+        Serial.print(F("OTA_INSUFFICIENT_SPACE:"));
+        Serial.println(freeSpace);
+        return;
+    }
+    
+    // Удаляем старый файл прошивки если существует
+    if (LittleFS.exists("/firmware.bin")) {
+        LittleFS.remove("/firmware.bin");
+    }
+    
+    // Открываем файл для записи
+    otaFile = LittleFS.open("/firmware.bin", "w");
+    if (!otaFile) {
+        Serial.println(F("OTA_FILE_OPEN_FAIL"));
+        return;
+    }
+    
+    Serial.println(F("OTA_READY"));
+    otaInProgress = true;
+    otaWriteInProgress = true;
+    otaStartTime = millis();
+    otaTotalSize = 0;
+    otaReceived = 0;
+}
 
+void cancelOTAUpdate() {
+    if (otaInProgress) {
+        if (otaFile) {
+            otaFile.close();
+        }
+        
+        // Удаляем частично загруженный файл
+        if (LittleFS.exists("/firmware.bin")) {
+            LittleFS.remove("/firmware.bin");
+        }
+        
+        otaInProgress = false;
+        otaWriteInProgress = false;
+        Serial.println(F("OTA_CANCELLED"));
+    }
+}
+
+void handleOTAData(uint8_t* data, size_t length) {
+    if (!otaInProgress || !otaWriteInProgress) return;
+    
+    // Проверка таймаута
+    if (millis() - otaStartTime > OTA_TIMEOUT) {
+        cancelOTAUpdate();
+        Serial.println(F("OTA_TIMEOUT"));
+        return;
+    }
+    
+    // Проверка размера файла
+    if (otaReceived + length > MAX_FIRMWARE_SIZE) {
+        cancelOTAUpdate();
+        Serial.println(F("OTA_FILE_TOO_LARGE"));
+        return;
+    }
+    
+    // Записываем данные в файл
+    size_t written = otaFile.write(data, length);
+    if (written != length) {
+        cancelOTAUpdate();
+        Serial.println(F("OTA_WRITE_FAIL"));
+        return;
+    }
+    
+    otaReceived += written;
+    
+    // Отправляем прогресс каждые 10KB
+    if (otaReceived % 10240 == 0) {
+        Serial.print(F("OTA_PROGRESS:"));
+        Serial.println(otaReceived);
+    }
+}
+
+void completeOTAWrite() {
+    if (otaFile) {
+        otaFile.close();
+    }
+    otaWriteInProgress = false;
+    
+    // Проверяем размер файла
+    File f = LittleFS.open("/firmware.bin", "r");
+    if (!f) {
+        Serial.println(F("OTA_FILE_VERIFY_FAIL"));
+        otaInProgress = false;
+        return;
+    }
+    
+    size_t actualSize = f.size();
+    f.close();
+    
+    Serial.print(F("OTA_RECEIVE_COMPLETE:"));
+    Serial.println(actualSize);
+    
+    if (actualSize < 100000) { // Минимальный размер прошивки ~100KB
+        LittleFS.remove("/firmware.bin");
+        otaInProgress = false;
+        Serial.println(F("OTA_FILE_TOO_SMALL"));
+        return;
+    }
+    
+    otaTotalSize = actualSize;
+    Serial.println(F("OTA_READY_TO_APPLY"));
+    
+    // Автоматически применяем обновление
+    applyOTAUpdate();
+}
+
+void applyOTAUpdate() {
+    if (!otaInProgress) {
+        Serial.println(F("OTA_NOT_READY"));
+        return;
+    }
+    
+    if (!LittleFS.exists("/firmware.bin")) {
+        Serial.println(F("OTA_FILE_MISSING"));
+        otaInProgress = false;
+        return;
+    }
+    
+    Serial.println(F("OTA_APPLYING"));
+    
+    File fwFile = LittleFS.open("/firmware.bin", "r");
+    if (!fwFile) {
+        Serial.println(F("OTA_APPLY_OPEN_FAIL"));
+        otaInProgress = false;
+        return;
+    }
+    
+    // Проверяем валидность прошивки
+    size_t fwSize = fwFile.size();
+    fwFile.close();
+    
+    if (fwSize < 100000) {
+        LittleFS.remove("/firmware.bin");
+        Serial.println(F("OTA_INVALID_FIRMWARE"));
+        otaInProgress = false;
+        return;
+    }
+    
+    Serial.println(F("OTA_VALIDATION_OK"));
+    
+    // Устанавливаем флаг OTA и перезагружаемся
+    EEPROM.write(OTA_FLAG_ADDR, 0xAA);
+    EEPROM.commit();
+    
+    Serial.println(F("OTA_REBOOTING"));
+    Serial.println(F("DEVICE_WILL_UPDATE_ON_REBOOT"));
+    
+    delay(2000);
+    
+    // Перезагружаем устройство
+    ESP.restart();
+}
 
 
 // Проверка всех файлов проекта завершена. Логика работы нагревателя корректна, компиляция успешна. Вот краткий анализ ключевых аспектов:
