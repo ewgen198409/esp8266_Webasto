@@ -76,19 +76,11 @@ void webasto() {
   switch (burn_mode) {
     case 0: { // Все выключено
 
-        // Плавное снижение скорости вентилятора, если она больше нуля
-        if (fan_speed > 0) {
-            fan_speed *= 0.95f; // Уменьшаем скорость на 5% от текущего значения
-            if (fan_speed < 0.5f) { // Практически достигли нуля
-                fan_speed = 0;
-            }
-        } else {
-            fan_speed = 0; // Гарантированно устанавливаем 0, если скорость <= 0
-        }
-
+        fan_speed = 0;
         fuel_need = 0;
         glow_time = 0;
         lean_burn = 0;
+        
       } break;
 
     case 1: { // Последовательность запуска огня
@@ -115,26 +107,31 @@ void webasto() {
           cooled_off = 1;
         }
 
-        // Очистка камеры
+        // Очистка камеры - равномерное увеличение скорости за 5 секунд
         if(seconds > 0 && seconds < 5) {
-          // Плавное увеличение скорости (например, на 5% за итерацию)
-          if (fan_speed < prime_fan_speed) {
-              fan_speed += (prime_fan_speed - fan_speed) * 0.1;
-              // Проверка на достижение целевой скорости с небольшим допуском
+          // Рассчитываем требуемую скорость на основе прогресса времени
+          float progress = seconds / 5.0;  // Прогресс от 0 до 1 за 5 секунд
+          float target_speed = prime_fan_speed * progress;
+
+          // Плавно устанавливаем скорость
+          if (fan_speed < target_speed) {
+              fan_speed += (target_speed - fan_speed) * 0.3;  // Быстрое приближение
           } else {
+              fan_speed = target_speed;
+          }
+
+          // Если достигли целевой скорости на 5-й секунде
+          if (seconds >= 4) {
               fan_speed = prime_fan_speed;
           }
+
           fuel_need = 0;
           message = "Clearing";
         }
 
         // Подготовка к розжигу
         if(seconds >= 6 && seconds <= 11) {
-              // Плавное увеличение скорости (например, на 5% за итерацию)
           if (fan_speed > start_fan_speed) {
-              fan_speed -= (fan_speed - start_fan_speed) * 0.05;
-              // Проверка на достижение целевой скорости
-          } else {
               fan_speed = start_fan_speed;
           }
           glow_time = 100;
@@ -222,29 +219,94 @@ void webasto() {
         // Если температура нагревателя ниже критической и нет ошибок
         if (exhaust_temp < heater_overheat && !webasto_fail) {
 
-          // Постепенное увеличение скорости вентилятора
+          // Постепенное изменение скорости вентилятора
           if (fan_speed < final_fan_speed) {
-            if(millis() - fan_timer >= 333) {
+            // Увеличение скорости вентилятора и топлива одновременно
+            if(millis() - fan_timer >= 1000) {  // Каждую секунду
               message = "Inc Burn";
-              fan_speed += (final_fan_speed-35.00)/full_power_increment_time/3;
 
+              // Определяем целевые значения
+              float target_fan_speed = final_fan_speed;
+              float target_fuel = 0;
               if (currentState == 0) {                                              // HIGH
-                fuel_need += (final_fuel-1.03)/full_power_increment_time/3;        // 6.5герц
-                  if(fuel_need > 2.38) {                                           //  если превысили предельное топливо
-                    fuel_need = 2.38;
-                  }
+                target_fuel = 2.38;
               } else if (currentState == 1) {                                       // MID
-                fuel_need += (final_fuel-1.27)/full_power_increment_time/3;         // 6.0
-
+                target_fuel = 2.20;
               } else if (currentState == 2) {                                       // LOW
-                fuel_need += (final_fuel-1.67)/full_power_increment_time/3;         // 5.0
+                target_fuel = 1.91;
               }
+
+              // Увеличиваем вентилятор на 2% от текущего значения
+              float fan_increment = fan_speed * 0.02;
+              float old_fan_speed = fan_speed;
+              fan_speed += fan_increment;
+
+              // Если увеличили слишком сильно, устанавливаем целевое значение
+              if(fan_speed > target_fan_speed) {
+                fan_speed = target_fan_speed;
+              }
+
+              // Синхронно изменяем топливо пропорционально изменению вентилятора
+              float fan_change_ratio = (fan_speed - old_fan_speed) / (target_fan_speed - old_fan_speed);
+
+              // Рассчитываем новое значение топлива на основе прогресса вентилятора
+              float new_fuel_need = fuel_need + (target_fuel - fuel_need) * fan_change_ratio;
+
+              // Если топливо превысило максимум для режима
+              if(new_fuel_need > target_fuel) {
+                fuel_need = target_fuel;
+              } else {
+                fuel_need = new_fuel_need;
+              }
+
               fan_timer = millis();
             }
 
-          } else {
-            fan_speed = final_fan_speed;
-            running_ratio(exhaust_temp);
+          } else if (fan_speed > final_fan_speed) {
+            // Уменьшение скорости вентилятора и топлива одновременно
+            if(millis() - fan_timer >= 1000) {  // Каждую секунду
+              message = "Dec Burn";
+
+              // Определяем целевые значения
+              float target_fan_speed = final_fan_speed;
+              float target_fuel = 0;
+              if (currentState == 0) {                                              // HIGH
+                target_fuel = 2.38;
+              } else if (currentState == 1) {                                       // MID
+                target_fuel = 2.20;
+              } else if (currentState == 2) {                                       // LOW
+                target_fuel = 1.91;
+              }
+
+              // Уменьшаем вентилятор на 2% от текущего значения
+              float fan_decrement = fan_speed * 0.02;
+              float old_fan_speed = fan_speed;
+              fan_speed -= fan_decrement;
+
+              // Если уменьшили слишком сильно, устанавливаем целевое значение
+              if(fan_speed < target_fan_speed) {
+                fan_speed = target_fan_speed;
+              }
+
+              // Синхронно изменяем топливо пропорционально изменению вентилятора
+              float fan_change_ratio = (old_fan_speed - fan_speed) / (old_fan_speed - target_fan_speed);
+
+              // Рассчитываем новое значение топлива на основе прогресса вентилятора
+              float new_fuel_need = fuel_need - (fuel_need - target_fuel) * fan_change_ratio;
+
+              // Если топливо ушло в отрицательную область или слишком сильно уменьшилось
+              if(new_fuel_need < target_fuel) {
+                fuel_need = target_fuel;
+              } else {
+                fuel_need = new_fuel_need;
+              }
+
+              fan_timer = millis();
+            }
+
+          } else if (exhaust_temp > 100) {    // когда температура достигла 100 градусов
+              fan_speed = final_fan_speed;
+              running_ratio(exhaust_temp);
           }
         }
 

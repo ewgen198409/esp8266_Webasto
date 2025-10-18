@@ -32,9 +32,16 @@ File otaFile;
 // Флаг OTA в EEPROM
 const int OTA_FLAG_ADDR = 500;
 
-OneWire oneWire(D0); // Пин D0 для датчика DS18B20
+OneWire oneWire(D0);                                    // Пин D0 для датчика DS18B20
 DallasTemperature sensors(&oneWire);
-float ds18b20_temp; // Переменная для хранения температуры с DS18B20
+float ds18b20_temp;                                     // Переменная для хранения температуры с DS18B20
+// Асинхронное чтение DS18B20
+unsigned long lastTempRequest = 0;
+bool tempRequested = false;
+int ds18b20_error_count = 0;
+const unsigned long TEMP_READ_INTERVAL = 1000;          // Читаем раз в секунду
+bool ds18b20_disabled = false;                        // НОВОЕ: флаг отключения датчика
+
 
 // Укажите адрес вашего I2C дисплея (обычно 0x27 или 0x3F)
 LiquidCrystal_I2C lcd(0x27, 16, 2); // Установите адрес, количество символов и строк
@@ -226,6 +233,9 @@ extern bool isAPMode;
 extern ESP8266WebServer server;
 
 void setup() {
+
+  setup_fuel_pump();
+
   lcd.init(); // Инициализация дисплея
   lcd.backlight(); // Включение подсветки
 
@@ -287,6 +297,7 @@ void setup() {
 
   // Инициализация датчика DS18B20
   sensors.begin();
+  sensors.setResolution(9); // 9 бит = 93.75 мс вместо 750 мс (±0.5°C точность)
 
   // Инициализация Wi-Fi AP и веб-сервера
   setup_wifi_station();
@@ -338,19 +349,44 @@ void loop() {
   // Обработка клиентов Wi-Fi и WebSocket
   handle_wifi_clients();
 
-  // Чтение температуры с датчика DS18B20
-  sensors.requestTemperatures();
-  ds18b20_temp = sensors.getTempCByIndex(0);
-  if (ds18b20_temp == DEVICE_DISCONNECTED_C) {
-    ds18b20_temp = 0; // Или другое значение по умолчанию
-  }
-
+ 
   // Основной цикл работы
   temp_data(); // Предполагаемые функции (убедитесь, что они определены)
   control();   // Предполагаемые функции (убедитесь, что они определены)
   webasto();   // Предполагаемые функции (убедитесь, что они определены)
   display_data(); // Предполагаемые функции (убедитесь, что они определены)
 
+  // Асинхронное чтение DS18B20
+  if (!ds18b20_disabled) { // НОВОЕ: проверяем флаг
+    unsigned long currentTime = millis();
+
+    if (!tempRequested && (currentTime - lastTempRequest >= TEMP_READ_INTERVAL)) {
+      sensors.requestTemperatures();
+      tempRequested = true;
+      lastTempRequest = currentTime;
+    }
+
+    if (tempRequested && (currentTime - lastTempRequest >= 100)) {
+      float tempReading = sensors.getTempCByIndex(0);
+      
+      if (tempReading == DEVICE_DISCONNECTED_C) {
+        ds18b20_temp = 0;
+        ds18b20_error_count++;
+        
+        if (ds18b20_error_count > 30) { // ИЗМЕНЕНО: с 10 на 30
+          ds18b20_disabled = true; // НОВОЕ: отключаем датчик навсегда
+          Serial.println(F("DS18B20_DISABLED: Too many errors"));
+        } else if (ds18b20_error_count == 10) {
+          sensors.begin(); // Попытка переинициализации на 10-й ошибке
+        }
+      } else {
+        ds18b20_temp = tempReading;
+        ds18b20_error_count = 0;
+      }
+      
+      tempRequested = false;
+    }
+  }
 
   // Обработка команд от Python-приложения
   serialEvent(); // Чтение из последовательного порта
@@ -359,24 +395,6 @@ void loop() {
   // Запуск неблокирующей рутины прокачки топлива
   runFuelPumpingRoutine();
 
-  // Отладка текущего состояния (закомментировано)
-  /*
-  static SystemState lastPrintedState = (SystemState)-1; // Инициализируем чем-то отличным от реальных состояний
-  if (currentState != lastPrintedState) {
-      Serial.print(F("Current State: "));
-      if (currentState == STATE_HIGH) Serial.println(F("HIGH"));
-      else if (currentState == STATE_MID) Serial.println(F("MID"));
-      else if (currentState == STATE_LOW) Serial.println(F("LOW"));
-      lastPrintedState = currentState;
-  }
-  // Отладка температуры и режима горения (закомментировано)
-  static unsigned long debug_print_timer = 0;
-  if (millis() - debug_print_timer >= 1000) { // Каждую секунду
-      Serial.print(F(" exhaust_temp: ")); Serial.print(exhaust_temp);
-      Serial.print(F(", burn: ")); Serial.println(burn ? F("ON") : F("OFF"));
-      debug_print_timer = millis();
-  }
-  */
 }
 
 // Сбрасывает все настройки на значения по умолчанию и сохраняет их в EEPROM
@@ -393,7 +411,6 @@ void resetToDefaultSettings() {
   settings.heater_min = 190;
   settings.heater_overheat = 210;
   settings.heater_warning = 200;
-  // Установка значений по умолчанию для новых переменных
   settings.max_pwm_fan = 140;
   settings.glow_brightness = 90UL; // Использование UL для unsigned long
   settings.glow_fade_in_duration = 10000UL; // Использование UL для unsigned long
@@ -416,7 +433,6 @@ void applySettings() {
   heater_min = settings.heater_min;
   heater_overheat = settings.heater_overheat;
   heater_warning = settings.heater_warning;
-  // Применение новых переменных
   max_pwm_global = settings.max_pwm_fan;
   glow_brightness_max = settings.glow_brightness;
   glow_fade_in_duration_ms = settings.glow_fade_in_duration;
@@ -451,12 +467,6 @@ void serialEvent() {
 // Разбирает и выполняет команды, полученные по последовательному порту
 void processSerialCommands() {
   if (stringComplete) {
-    /*
-    Serial.print(F("DEBUG: Получена команда (сырой буфер): '"));
-    Serial.print(inputBuffer); // Выводим буфер до обрезки
-    Serial.print(F("', длина: "));
-    Serial.println(strlen(inputBuffer));
-    */
 
     // Создаем временную копию для безопасной модификации (strtok изменяет строку)
     char tempCommand[SERIAL_BUFFER_SIZE];
@@ -476,12 +486,6 @@ void processSerialCommands() {
         *end-- = '\0';
     }
 
-    /*
-    Serial.print(F("DEBUG: Обработанная команда: '"));
-    Serial.print(cleanedCommand);
-    Serial.print(F("', длина: "));
-    Serial.println(strlen(cleanedCommand));
-    */
 
     // Теперь используем cleanedCommand для сравнения
     char* currentCommandPtr = cleanedCommand;
@@ -525,7 +529,6 @@ void processSerialCommands() {
       }
     }
     else if (strcmp(currentCommandPtr, "RESET_FUEL_CONSUMPTION") == 0) {
-      // Serial.println(F("DEBUG: Идентифицирована команда RESET_FUEL_CONSUMPTION."));
       total_fuel_consumed_liters = 0.0;
       send_status_update(); // Обновляем UI
       Serial.println(F("FUEL_RESET_OK"));
@@ -634,26 +637,14 @@ void processSerialCommands() {
         }
     }
 
-    else {
-      /*
-      Serial.print(F("DEBUG: Неизвестная команда или несоответствие: '"));
-      Serial.print(currentCommandPtr);
-      Serial.println(F("'"));
-      // Дополнительная отладка для неизвестных команд
-      for (int i = 0; i < strlen(cleanedCommand); i++) { // Итерируем по обрезанной строке
-        Serial.print(F(" Char[")); Serial.print(i); Serial.print(F("]: '"));
-        Serial.print(cleanedCommand[i]); Serial.print(F("' ("));
-        Serial.print((int)cleanedCommand[i]); Serial.println(F(")"));
-      }
-      */
-    }
+    // Неизвестные команды игнорируются
     // Сбрасываем флаг и индекс для следующей команды
     stringComplete = false;
     inputBufferIndex = 0; // ВАЖНО: Сбрасываем индекс здесь, после обработки
   }
 }
 
-void sendDetailedWiFiStatus() {
+void sendDetailedWiFiStatus() {                                        // подготовка и тправка статуса wifi по сериал
     Serial.print(F("WIFI_STATUS_DETAILED:"));
     Serial.print(F("mode=")); Serial.print(isAPMode ? "AP" : "STA");
     
@@ -731,18 +722,9 @@ void handleEnterCommand() {
   Serial.println(burn ? F("ON") : F("OFF"));
 }
 
-// // Отправляет текущие настройки по последовательному порту
-// void sendCurrentSettings() {
-//   Serial.print(F("CURRENT_SETTINGS:"));
-//   Serial.print(F("pump_size=")); Serial.print(settings.pump_size); Serial.print(F(","));
-//   Serial.print(F("heater_target=")); Serial.print(settings.heater_target); Serial.print(F(","));
-//   Serial.print(F("heater_min=")); Serial.print(settings.heater_min); Serial.print(F(","));
-//   Serial.print(F("heater_overheat=")); Serial.print(settings.heater_overheat); Serial.print(F(","));
-//   Serial.print(F("heater_warning=")); Serial.println(settings.heater_warning);
-// }
 
 // Обрабатывает команду обновления настроек (например, "SET:pump_size=22,heater_target=195")
-void handleSettingsUpdate(char* paramsStr, bool is_from_websocket) { // Изменена сигнатура
+void handleSettingsUpdate(char* paramsStr, bool is_from_websocket) {         // Изменена сигнатура
   // Serial.println(F("DEBUG: Вызвана handleSettingsUpdate()"));
   settingsUpdateInProgress = true; // Блокируем потенциальные конфликты (например, с logging())
 

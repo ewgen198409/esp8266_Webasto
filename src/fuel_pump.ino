@@ -1,88 +1,115 @@
-// Объявление внешних глобальных переменных, которые должны быть определены в основном файле (например, low_smoke.ino)
+// Объявление внешних глобальных переменных
 extern float fuel_need;
-extern int pump_size; // Предполагается, что pump_size - это количество топлива в миллилитрах за 1000 импульсов
-extern int delayed_period; // Задержка между импульсами, используется для расчета частоты
+extern int pump_size;
+extern int delayed_period;
 
-// Новые глобальные переменные для учета расхода топлива
-extern float total_fuel_consumed_liters; // Общее количество потребленного топлива в литрах
-extern float fuel_consumption_per_hour;  // Средний расход топлива за 1 час в литрах/час
+extern float total_fuel_consumed_liters;
+extern float fuel_consumption_per_hour;
 
-// Объявление extern для fuel_pump_pin
 extern int fuel_pump_pin;
-
-// Объявление extern для структуры Settings (если она определена в другом файле)
 extern Settings settings;
 
+// Константы для генерации импульсов
+#define DUTY_CYCLE 15           // Фиксированная скважность 15%
+#define MIN_FREQUENCY 1.0       // Минимальная частота 1 Гц
+#define MAX_FREQUENCY 10.0      // Максимальная частота 10 Гц
+#define MIN_FUEL_NEED 0.01      // Минимальное значение fuel_need для работы (0.01 = точность 2 знака)
+
+// Переменные для генерации импульсов
+static unsigned long pulse_period_ms = 1000;  // Период импульса в миллисекундах
+static unsigned long pulse_on_time_ms = 150;  // Время включения (15% от периода)
+static unsigned long last_pulse_start = 0;    // Время начала последнего импульса
+static bool pulse_active = false;             // Флаг активного импульса
+
+void setup_fuel_pump() {
+  pinMode(fuel_pump_pin, OUTPUT);
+  digitalWrite(fuel_pump_pin, LOW);
+  pulse_active = false;
+  last_pulse_start = millis();
+}
 
 void fuel_pump() {
-  // Статические переменные для хранения времени следующего импульса и времени начала импульса
-  static unsigned long next_pulse_timer;
-  static unsigned long pulse_started_off_at;
-
-  // Если топливо не требуется (fuel_need == 0), устанавливаем таймеры
-  if(fuel_need == 0)
+  unsigned long current_time = millis();
+  
+  // Если топливо не требуется или значение слишком мало
+  if(fuel_need < MIN_FUEL_NEED)
   {
-    // Устанавливаем время следующего импульса на 50 миллисекунд вперед
-    next_pulse_timer = millis() + 50;
-    // Устанавливаем время начала импульса на 50 миллисекунд назад
-    pulse_started_off_at = millis() - 50;
-    fuel_consumption_per_hour = 0.0; // Сбрасываем расход за час, если нет потребности в топливе
+    // Безопасное выключение
+    if(pulse_active) {
+      digitalWrite(fuel_pump_pin, LOW);
+      pulse_active = false;
+    }
+    
+    // Сбрасываем параметры
+    fuel_consumption_per_hour = 0.0;
+    delayed_period = 0;
+    last_pulse_start = current_time; // Обновляем для предотвращения скачка при запуске
+    return;
   }
 
-  // Вычисляем задержку между импульсами
-  // ВНИМАНИЕ: В этой формуле '(60.00 / pump_size)' 'pump_size' интерпретируется как
-  // "количество импульсов, необходимых для подачи 60 мл топлива".
-  // Если ваше 'pump_size' на самом деле означает "миллилитры за 1000 импульсов",
-  // то эта часть формулы может привести к некорректному расчету 'delayed_period'.
-  // Логика этой строки сохранена без изменений, как было запрошено.
-  delayed_period = 1000 / fuel_need / (60.00 / pump_size); 
+  // Вычисляем требуемую частоту импульсов на основе fuel_need
+  // Защита от деления на ноль и слишком малых значений
+  float calculated_period = 1000.0 / fuel_need / (60.0 / pump_size);
+  
+  // Проверка на валидность расчета
+  if(calculated_period <= 0 || isnan(calculated_period) || isinf(calculated_period)) {
+    calculated_period = 1000; // Значение по умолчанию (1 Гц)
+  }
+  
+  delayed_period = (int)calculated_period;
+  
+  // Вычисляем частоту в Гц и ограничиваем в допустимых пределах
+  float target_frequency = 1000.0 / delayed_period;
+  target_frequency = constrain(target_frequency, MIN_FREQUENCY, MAX_FREQUENCY);
+  
+  // Вычисляем период импульса в миллисекундах
+  pulse_period_ms = (unsigned long)(1000.0 / target_frequency);
+  
+  // Защита от нулевого периода
+  if(pulse_period_ms < 100) pulse_period_ms = 100; // Минимум 100 мс (10 Гц)
+  
+  // Вычисляем время включения (15% от периода)
+  pulse_on_time_ms = (pulse_period_ms * DUTY_CYCLE) / 100;
+  
+  // Защита от слишком короткого импульса
+  if(pulse_on_time_ms < 10) pulse_on_time_ms = 10; // Минимум 10 мс
 
-  // Скважность 15%
-  int duty_cycle = 15;
+  // Безопасное вычисление времени в цикле
+  unsigned long time_in_cycle = current_time - last_pulse_start;
 
-  // Вычисляем время включения насоса
-  int on_time = (delayed_period * duty_cycle) / 100;
-
-  // Если время начала импульса меньше или равно текущему времени, выключаем насос
-  if(pulse_started_off_at <= millis())
-    digitalWrite(fuel_pump_pin, LOW);
-
-  // Если время следующего импульса меньше или равно текущему времени, включаем насос
-  if(next_pulse_timer <= millis())
+  // Если начался новый цикл импульса
+  if(time_in_cycle >= pulse_period_ms)
   {
-      // Устанавливаем время следующего импульса
-      next_pulse_timer = (on_time + (delayed_period - on_time)) + millis(); 
-      // Включаем насос
-      digitalWrite(fuel_pump_pin, HIGH);
-      // Устанавливаем время начала импульса
-      pulse_started_off_at = millis() + on_time;
+    // Сбрасываем счетчик цикла
+    last_pulse_start = current_time;
+    time_in_cycle = 0;
+    
+    // Включаем импульс
+    digitalWrite(fuel_pump_pin, HIGH);
+    pulse_active = true;
 
-      // === Расчет потребленного топлива ===
-      // Теперь 'settings.pump_size' используется как "миллилитры за 1000 импульсов".
-      // Следовательно, объем за один импульс = settings.pump_size / 1000.0.
-      float ml_per_pulse = settings.pump_size / 1000.0; // ИСПРАВЛЕНО: Учитываем 1000 импульсов
-
-      // Увеличиваем общее потребление топлива
-      total_fuel_consumed_liters += ml_per_pulse / 1000.0; // Добавляем в литрах
+    // === Расчет потребленного топлива ===
+    // Один импульс = одна порция топлива
+    float ml_per_pulse = settings.pump_size / 1000.0;
+    
+    // Защита от отрицательных или аномальных значений
+    if(ml_per_pulse > 0 && ml_per_pulse < 1000) { // Разумный диапазон
+      total_fuel_consumed_liters += ml_per_pulse / 1000.0;
 
       // Обновляем расход топлива за час
-      // Текущая частота импульсов: 1000.0 / delayed_period (импульсов в секунду)
-      // Расход в мл/сек: (1000.0 / delayed_period) * ml_per_pulse
-      // Расход в мл/час: (1000.0 / delayed_period) * ml_per_pulse * 3600.0
-      // Расход в л/час: ((1000.0 / delayed_period) * ml_per_pulse * 3600.0) / 1000.0
-      // Упрощаем: (ml_per_pulse * 3.6) / delayed_period
-      
-      // Чтобы избежать деления на ноль, если delayed_period внезапно станет 0
-      if (delayed_period > 0) {
-          fuel_consumption_per_hour = (ml_per_pulse * 3600.0) / delayed_period; // л/час
+      if (pulse_period_ms > 0) {
+          float pulses_per_second = 1000.0 / pulse_period_ms;
+          fuel_consumption_per_hour = (pulses_per_second * ml_per_pulse * 3600.0) / 1000.0;
       } else {
           fuel_consumption_per_hour = 0.0;
       }
-      
-      // Для экономии ресурсов и уменьшения частоты записи в EEPROM,
-      // сохраняем настройки только при значительном изменении или периодически.
-      // Пока не будем вызывать saveSettings() здесь, чтобы не нагружать EEPROM.
-      // Это должно быть сделано в loop() основного файла с определенной периодичностью.
+    }
+  }
+
+  // Если время включения истекло, выключаем импульс
+  if(pulse_active && time_in_cycle >= pulse_on_time_ms)
+  {
+    digitalWrite(fuel_pump_pin, LOW);
+    pulse_active = false;
   }
 }
-

@@ -28,8 +28,10 @@ void logging(int ignit_fail, float temp_init, int seconds) {
   Serial.print(" | Fan%: ");
   Serial.print(fan_speed);
   Serial.print(" | FHZ ");
-  if(delayed_period>0)
-    Serial.print(1000.00/delayed_period);
+    if(delayed_period > 0)
+      Serial.print(1000.00/delayed_period);
+    else
+      Serial.print("0");          // или Serial.print("OFF");
   Serial.print(" | FN: ");
   Serial.print(fuel_need);
   Serial.print(" | Gl: ");

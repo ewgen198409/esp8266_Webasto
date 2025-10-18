@@ -8,23 +8,23 @@ void running_ratio(float exhaust_temp) {
   // =====================================================================================================
   // =============== Настройка топлива в зависимости от выбранного режима ================================
   // =====================================================================================================
-  if (currentState == 0) {                                              // HIGH  100% (75% ШИМ)
+  if (currentState == 0) {                                              // HIGH  100%
     final_fuel = 2.38;                                                   // 6.5 герц
     throttling_high_fuel = 2.20;                                         // 6.0 герц
     throttling_middle_fuel = 2.01;                                       // 5.5 герц
     throttling_low_fuel = 1.65;                                          // 4.5 герц
 
-  } else if (currentState == 1) {                                       // MID  80% (60% ШИМ)
+  } else if (currentState == 1) {                                       // MID  80%
     final_fuel = 2.20;                                                   // 6.0 герц
     throttling_high_fuel = 2.01;                                         // 5.5 герц
     throttling_middle_fuel = 1.81;                                       // 5.0 герц
     throttling_low_fuel = 1.46;                                          // ~4.0 герц
 
-  } else if (currentState == 2) {                                       // LOW  60% (45% ШИМ)
-    final_fuel = 1.81;                                                   // 5.0 герц
-    throttling_high_fuel = 1.65;                                         // 4.5 герц
-    throttling_middle_fuel = 1.46;                                       // 4.0 герц
-    throttling_low_fuel = 1.08;                                          // ~3.0 герц
+  } else if (currentState == 2) {                                       // LOW  60%
+    final_fuel = 1.91;                                                   // 5.0 герц
+    throttling_high_fuel = 1.75;                                         // 4.5 герц
+    throttling_middle_fuel = 1.56;                                       // 4.0 герц
+    throttling_low_fuel = 1.18;                                          // ~3.0 герц
   }
   // =====================================================================================================
 
