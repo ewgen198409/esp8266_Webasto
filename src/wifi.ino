@@ -42,8 +42,8 @@ WiFiSettings storedWiFi;
 
 // Адреса в EEPROM для хранения настроек
 // Используем область после настроек из low_smoke.ino
-const int EEPROM_SIZE = 512;
-const int WIFI_SETTINGS_ADDR = 250; // Начинаем после настроек из low_smoke.ino
+const int EEPROM_SIZE = 1024;
+const int WIFI_SETTINGS_ADDR = 300; // Начинаем после настроек из low_smoke.ino
 
 // Объявление внешних переменных
 extern float exhaust_temp;
@@ -1369,11 +1369,9 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
 
 // Функция для инициализации EEPROM для WiFi
 void initWiFiEEPROM() {
-  EEPROM.begin(EEPROM_SIZE);
-  
   // Читаем сохраненные настройки WiFi
   EEPROM.get(WIFI_SETTINGS_ADDR, storedWiFi);
-  
+
   // Проверяем валидность данных
   if (!storedWiFi.valid || strlen(storedWiFi.ssid) == 0) {
     Serial.println("DEBUG: No valid WiFi settings found in EEPROM");
@@ -1815,4 +1813,3 @@ void handleSerialCommand(String command) {
     Serial.printf("DEBUG: Unknown Serial command: %s\n", command.c_str());
   }
 }
-

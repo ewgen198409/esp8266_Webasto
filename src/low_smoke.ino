@@ -272,7 +272,7 @@ void setup() {
   Serial.begin(57600); // Инициализация последовательного порта
 
   // Инициализация EEPROM для ESP8266
-  EEPROM.begin(sizeof(Settings)); // Выделяем необходимое количество байт для структуры настроек
+  EEPROM.begin(1024); // Выделяем 1024 байта для всех настроек
 
   EEPROM.get(0, settings); // Читаем настройки из EEPROM
   Serial.print(F("EEPROM: Прочитано magicNumber = 0x"));
@@ -532,6 +532,11 @@ void processSerialCommands() {
       total_fuel_consumed_liters = 0.0;
       send_status_update(); // Обновляем UI
       Serial.println(F("FUEL_RESET_OK"));
+    }
+    else if (strcmp(currentCommandPtr, "RESET_SETTINGS") == 0) {
+      resetToDefaultSettings();
+      sendCurrentSettings();
+      Serial.println(F("RESET_SETTINGS_OK"));
     }
 
     // ДОБАВЛЕНО: Обработка WiFi команд
