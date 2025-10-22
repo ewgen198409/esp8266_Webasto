@@ -51,6 +51,14 @@ jobs:
         git tag -f $TAG_NAME
         git push -f origin $TAG_NAME
 
+    - name: Install PyInstaller
+      run: pip install pyinstaller
+
+    - name: Build Webasto Monitor Executable
+      run: |
+        cd webasto_monitor
+        pyinstaller --onefile --windowed --icon=webasto_256x256.ico webasto.py
+
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
@@ -63,6 +71,7 @@ jobs:
           - Обновлена версия прошивки до ${{ env.TAG_NAME }}
         files: |
           .pio/build/nodemcuv2/firmware.bin
+          webasto_monitor/dist/webasto.exe
         draft: false
         prerelease: false
       env:
