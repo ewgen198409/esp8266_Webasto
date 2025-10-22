@@ -6,6 +6,7 @@ from threading import Thread, Event
 import queue
 import re
 import os
+import time
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
@@ -81,7 +82,10 @@ class WebastoMonitorApp:
         # Флаг для остановки потока чтения
         self.stop_event = Event()
         self.serial_queue = queue.Queue()
-        
+
+        # Время последнего запроса информации об устройстве
+        self.last_device_info_request = 0
+
         # Инициализация GUI
         self.setup_ui()
 
@@ -570,7 +574,7 @@ class WebastoMonitorApp:
         try:
             while not self.serial_queue.empty():
                 line = self.serial_queue.get_nowait()
-                
+
                 if line.startswith("WIFI_STATUS:"):
                     self.parse_wifi_status(line[12:])
                 elif line.startswith("WIFI_SCAN_START"):
@@ -596,10 +600,17 @@ class WebastoMonitorApp:
                 else:
                     # Парсим обычные данные Webasto
                     self.parse_data(line)
-                        
+
         except queue.Empty:
             pass
-        
+
+        # Проверяем, нужно ли повторно запросить информацию об устройстве
+        current_time = time.time()
+        if current_time - self.last_device_info_request > 5:  # каждые 5 секунд
+            any_na = any(var.get() == "N/A" for var in self.device_info_vars.values())
+            if any_na:
+                self.request_device_info()
+
         if not self.stop_event.is_set():
             self.root.after(100, self.process_serial_queue)
 
@@ -853,6 +864,7 @@ class WebastoMonitorApp:
                 self.ser.write(b'GET_FIRMWARE_VERSION\n')
                 self.root.after(200, lambda: self.ser.write(b'GET_WIFI_STATUS_DETAILED\n'))
                 self.root.after(400, lambda: self.ser.write(b'GET_FS_INFO\n'))
+                self.last_device_info_request = time.time()
                 self.log_message("Requested device information")
             except Exception as e:
                 self.log_message(f"Error requesting device info: {str(e)}")

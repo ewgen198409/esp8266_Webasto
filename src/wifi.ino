@@ -47,6 +47,7 @@ const int WIFI_SETTINGS_ADDR = 300; // Начинаем после настро�
 
 // Объявление внешних переменных
 extern float exhaust_temp;
+extern float ds18b20_temp;
 extern float fan_speed;
 extern float fuel_need;
 extern int glow_time;
@@ -607,6 +608,7 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
                         <span id="burnStatusIndicator" class="status-indicator status-off"></span>
                     </div>
                     <div class="status-item">Температура выхлопа: <span id="exhaustTemp" class="font-bold">--</span> &deg;C</div>
+                    <div class="status-item">Температура впуска: <span id="intakeTemp" class="font-bold">--</span> &deg;C</div>
                     <div class="status-item">Скорость вентилятора: <span id="fanSpeed" class="font-bold">--</span> %</div>
                     <div class="status-item">Расход топлива: <span id="fuelRateHz" class="font-bold">--</span> Гц</div>
                     <div class="status-item">
@@ -705,7 +707,7 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
 					<button id="saveSettingsBtn" class="btn btn-primary">Сохранить настройки</button>
 					<button id="resetSettingsBtn" class="btn btn-danger">Сбросить настройки</button>
 				</div>
-				<button id="loadSettingsBtn" class="btn btn-secondary w-full">Загрузить настройки</button>
+				<button id="loadSettingsBtn" class="btn btn-secondary w-full">Считать настройки</button>
 			</div>
 		</div>
 
@@ -1057,6 +1059,7 @@ const char PROGMEM INDEX_HTML[] = R"rawliteral(
 
             // Основные данные состояния
             document.getElementById('exhaustTemp').textContent = data.exhaust_temp !== undefined ? data.exhaust_temp.toFixed(1) : '--';
+            document.getElementById('intakeTemp').textContent = data.ds18b20_temp !== undefined ? data.ds18b20_temp.toFixed(1) : '--';
             document.getElementById('fanSpeed').textContent = data.fan_speed !== undefined ? data.fan_speed.toFixed(0) : '--';
             document.getElementById('fuelRateHz').textContent = data.fuel_rate_hz !== undefined ? data.fuel_rate_hz.toFixed(2) : '--';
 
@@ -1579,6 +1582,7 @@ void send_status_update() {
     }
 
     doc["exhaust_temp"] = exhaust_temp;
+    doc["ds18b20_temp"] = ds18b20_temp;
     doc["fan_speed"] = fan_speed;
     doc["fuel_rate_hz"] = calculated_fuel_rate_hz;
     doc["glow_time"] = glow_time;
@@ -1609,8 +1613,6 @@ void send_status_update() {
     String jsonString;
     serializeJson(doc, jsonString);
     webSocket.broadcastTXT(jsonString);
-  } else {
-    Serial.println("DEBUG: WebSocket not connected, status update skipped.");
   }
 }
 
@@ -1720,7 +1722,7 @@ void sendCurrentSettings() {
     Serial.print(F("glow_brightness=")); Serial.print(settings.glow_brightness); Serial.print(F(","));
     Serial.print(F("glow_fade_in_duration=")); Serial.print(settings.glow_fade_in_duration); Serial.print(F(","));
     Serial.print(F("glow_fade_out_duration=")); Serial.println(settings.glow_fade_out_duration);
-    Serial.println(F("DEBUG: Sent settings via Serial (WebSocket not connected)."));
+
   }
 }
 
