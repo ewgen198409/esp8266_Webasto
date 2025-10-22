@@ -476,22 +476,28 @@ class WebastoMonitorApp:
         # Кнопки управления
         buttons_frame = ttk.Frame(self.settings_window)
         buttons_frame.pack(fill=tk.X, padx=10, pady=10)
-        
+
         ttk.Button(
-            buttons_frame, 
-            text="Read Settings", 
+            buttons_frame,
+            text="Read Settings",
             command=self.read_settings
         ).pack(side=tk.LEFT, padx=5)
-        
+
         ttk.Button(
-            buttons_frame, 
-            text="Save Settings", 
+            buttons_frame,
+            text="Save Settings",
             command=self.save_settings
         ).pack(side=tk.RIGHT, padx=5)
-        
+
         ttk.Button(
-            buttons_frame, 
-            text="Cancel", 
+            buttons_frame,
+            text="Reset Settings",
+            command=self.reset_settings
+        ).pack(side=tk.RIGHT, padx=5)
+
+        ttk.Button(
+            buttons_frame,
+            text="Cancel",
             command=self.settings_window.destroy
         ).pack(side=tk.RIGHT, padx=5)
 
@@ -529,19 +535,30 @@ class WebastoMonitorApp:
         if not hasattr(self, 'ser') or not self.ser.is_open:
             messagebox.showerror("Error", "Not connected to device!")
             return
-            
+
         settings_command = "SET:"
         settings_command += ",".join(
             f"{k}={v.get()}" for k, v in self.settings_entries.items()
         )
         settings_command += "\n"
-        
+
         try:
             self.ser.write(settings_command.encode())
             self.log_message(f"Sent settings: {settings_command.strip()}")
             messagebox.showinfo("Success", "Settings sent to device")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to send settings: {str(e)}")
+
+    def reset_settings(self):
+        if hasattr(self, 'ser') and self.ser.is_open:
+            try:
+                self.ser.write(b'RESET_SETTINGS\n')
+                self.log_message("Sent RESET_SETTINGS command")
+                messagebox.showinfo("Success", "Reset settings command sent")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to send reset settings: {str(e)}")
+        else:
+            messagebox.showerror("Error", "Not connected to device!")
 
     def send_up_command(self):
         """Отправка команды увеличения уровня мощности"""

@@ -27,9 +27,17 @@ ESP8266HTTPUpdateServer httpUpdater;
 
 
 // Флаги режима работы
-bool isAPMode = false;
-unsigned long wifiConnectStartTime = 0;
+// Новые состояния для неблокирующего управления Wi-Fi (определены в low_smoke.ino)
+extern WiFiConnectionState currentWiFiState;
+extern unsigned long lastWiFiStateChange;
+
+// Определение переменных (должны быть определены в одном месте)
+WiFiConnectionState currentWiFiState = WIFI_INIT;
+unsigned long lastWiFiStateChange = 0;
 const unsigned long WIFI_CONNECT_TIMEOUT = 15000; // 15 секунд на подключение
+
+bool isAPMode = false; // Этот флаг будет обновляться в зависимости от currentWiFiState
+unsigned long wifiConnectStartTime = 0; // Используется для таймаута в setup()
 
 // Структура для хранения WiFi настроек в EEPROM
 struct WiFiSettings {
@@ -1411,67 +1419,45 @@ void clearWiFiSettings() {
   Serial.println("DEBUG: WiFi settings cleared");
 }
 
-// Функция для попытки подключения к сохраненной WiFi сети
-bool connectToSavedWiFi() {
+// Функция для инициации подключения к сохраненной WiFi сети (неблокирующая)
+void startConnectToSavedWiFi() {
   if (!storedWiFi.valid || strlen(storedWiFi.ssid) == 0) {
-    Serial.println("DEBUG: No saved WiFi credentials found");
-    return false;
+    Serial.println("DEBUG: No valid WiFi settings found in EEPROM. Cannot connect to STA.");
+    currentWiFiState = WIFI_CONNECT_FAILED; // Переходим в состояние ошибки
+    lastWiFiStateChange = millis();
+    return;
   }
   
-  Serial.println("DEBUG: Attempting to connect to saved WiFi...");
+  Serial.println("DEBUG: Initiating connection to saved WiFi...");
   Serial.printf("DEBUG: SSID: %s\n", storedWiFi.ssid);
   
-  // Инициализируем WiFi в станционном режиме
   WiFi.mode(WIFI_STA);
   WiFi.setSleepMode(WIFI_NONE_SLEEP);
-  
-  // Пытаемся подключиться к сохраненной сети
   WiFi.begin(storedWiFi.ssid, storedWiFi.password);
   
+  currentWiFiState = WIFI_CONNECTING_STA;
+  lastWiFiStateChange = millis();
   Serial.print("DEBUG: Connecting to WiFi");
-  wifiConnectStartTime = millis();
-  
-  // Ждем подключения с таймаутом
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-    
-    // Проверяем таймаут
-    if (millis() - wifiConnectStartTime > WIFI_CONNECT_TIMEOUT) {
-      Serial.println();
-      Serial.println("DEBUG: WiFi connection timeout!");
-      return false;
-    }
-  }
-  
-  Serial.println();
-  Serial.println("DEBUG: WiFi connected successfully!");
-  Serial.print("DEBUG: IP address: ");
-  Serial.println(WiFi.localIP());
-  
-  return true;
 }
 
-// Функция для настройки точки доступа
-void setupAPMode() {
-  Serial.println("DEBUG: Setting up Access Point mode...");
+// Функция для настройки точки доступа (неблокирующая)
+void startAPMode() {
+  Serial.println("DEBUG: Initiating Access Point mode setup...");
   
-  // Переключаемся в режим точки доступа
   WiFi.mode(WIFI_AP);
   WiFi.setSleepMode(WIFI_NONE_SLEEP);
   
-  // Настраиваем точку доступа с фиксированными параметрами
   const char* ap_ssid = mdns_hostname;
   const char* ap_password = "12345678";
   IPAddress ap_ip(192, 168, 10, 10);
   IPAddress subnet(255, 255, 255, 0);
   
-  // Настраиваем статический IP для точки доступа
   WiFi.softAPConfig(ap_ip, ap_ip, subnet);
   
-  // Запускаем точку доступа
   if (WiFi.softAP(ap_ssid, ap_password)) {
+    currentWiFiState = WIFI_AP_ACTIVE;
     isAPMode = true;
+    lastWiFiStateChange = millis();
     Serial.println("DEBUG: Access Point started successfully.");
     Serial.print("DEBUG: AP SSID: ");
     Serial.println(ap_ssid);
@@ -1479,27 +1465,23 @@ void setupAPMode() {
     Serial.println(WiFi.softAPIP());
   } else {
     Serial.println("ERROR: Failed to start Access Point!");
+    currentWiFiState = WIFI_CONNECT_FAILED; // В случае ошибки AP
+    lastWiFiStateChange = millis();
   }
 }
 
-// Основная функция настройки WiFi
+// Эта функция больше не нужна, так как startAPMode() теперь неблокирующая
+// и вызывается из handle_wifi_state()
+
+// Основная функция настройки WiFi (инициирует процесс, но не блокирует)
 void setup_wifi_station() {
   Serial.println();
   Serial.println("DEBUG: === Starting WiFi Setup ===");
   
-  // Инициализируем EEPROM для WiFi настроек
-  initWiFiEEPROM();
+  initWiFiEEPROM(); // Инициализируем EEPROM для WiFi настроек
   
-  // Сначала пытаемся подключиться к сохраненной сети
-  if (connectToSavedWiFi()) {
-    // Успешно подключились к WiFi
-    isAPMode = false;
-    Serial.println("DEBUG: Running in STA mode (connected to router)");
-  } else {
-    // Не удалось подключиться - запускаем точку доступа
-    setupAPMode();
-    Serial.println("DEBUG: Running in AP mode");
-  }
+  // Инициируем попытку подключения к сохраненной сети
+  startConnectToSavedWiFi();
   
   // Инициализация mDNS (работает в обоих режимах)
   if (MDNS.begin(mdns_hostname)) {
@@ -1531,20 +1513,69 @@ void setup_wifi_station() {
   Serial.println("DEBUG: === WiFi Setup Complete ===");
 }
 
+// Функция для обработки состояний Wi-Fi (неблокирующая)
+void handle_wifi_state() {
+  unsigned long currentTime = millis();
+
+  switch (currentWiFiState) {
+    case WIFI_INIT:
+      // Должно быть инициировано в setup_wifi_station()
+      break;
+
+    case WIFI_CONNECTING_STA:
+      Serial.print("."); // Продолжаем выводить точки, пока подключаемся
+      if (WiFi.status() == WL_CONNECTED) {
+        Serial.println();
+        Serial.println("DEBUG: WiFi connected successfully!");
+        Serial.print("DEBUG: IP address: ");
+        Serial.println(WiFi.localIP());
+        currentWiFiState = WIFI_CONNECTED_STA;
+        isAPMode = false;
+        lastWiFiStateChange = currentTime;
+      } else if (currentTime - lastWiFiStateChange > WIFI_CONNECT_TIMEOUT) {
+        Serial.println();
+        Serial.println("DEBUG: WiFi connection timeout! Switching to AP mode...");
+        currentWiFiState = WIFI_CONNECT_FAILED; // Переходим в состояние ошибки
+        lastWiFiStateChange = currentTime;
+        startAPMode(); // Инициируем запуск AP
+      }
+      break;
+
+    case WIFI_CONNECTED_STA:
+      if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("DEBUG: WiFi connection lost! Attempting to reconnect...");
+        currentWiFiState = WIFI_CONNECTING_STA;
+        lastWiFiStateChange = currentTime;
+        WiFi.begin(storedWiFi.ssid, storedWiFi.password); // Повторная попытка подключения
+      }
+      break;
+
+    case WIFI_SETTING_UP_AP:
+      // startAPMode() уже должна была установить WIFI_AP_ACTIVE
+      // Если по какой-то причине не установила, можно добавить таймаут
+      break;
+
+    case WIFI_AP_ACTIVE:
+      // Просто поддерживаем AP
+      isAPMode = true;
+      break;
+
+    case WIFI_CONNECT_FAILED:
+      // Если мы здесь, значит, попытка STA провалилась, и мы уже должны были перейти в AP
+      // Или, если AP тоже провалилась, остаемся в этом состоянии.
+      // Можно добавить логику для периодических повторных попыток STA, если нужно.
+      break;
+  }
+}
+
 // Остальные функции остаются без изменений
 void handle_wifi_clients() {
   server.handleClient();
   webSocket.loop();
   MDNS.update();
   
-  if (!isAPMode && WiFi.status() != WL_CONNECTED) {
-    static unsigned long lastCheck = 0;
-    if (millis() - lastCheck > 10000) {
-      lastCheck = millis();
-      Serial.println("DEBUG: WiFi connection lost! Switching to AP mode...");
-      setupAPMode();
-    }
-  }
+  // Теперь управление состоянием Wi-Fi вынесено в handle_wifi_state()
+  handle_wifi_state();
 }
 
 void sendWiFiStatus() {

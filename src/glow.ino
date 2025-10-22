@@ -24,7 +24,6 @@ void glow_plug() {
     // Затухание свечи в течение glow_fade_out_duration_ms
     // Если время накала (glow_time) больше 0, свеча включается, и время накала уменьшается каждую секунду.
 
-    static long timer; // Статическая переменная для хранения времени таймера
     static bool is_fading_out = false; // Флаг для отслеживания процесса плавного выключения
     static unsigned long fade_out_start = 0; // Время начала плавного выключения
     static unsigned long glow_start_time = 0; // Время начала текущего цикла накала
@@ -93,4 +92,3 @@ void glow_plug() {
     // Обновляем предыдущее состояние для следующего цикла
     prev_glow_active_state = current_glow_active_state;
 }
-

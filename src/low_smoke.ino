@@ -214,8 +214,22 @@ void send_status_update();
 void sendWiFiStatus();
 void clearWiFiSettings();
 void saveWiFiSettings(const char* ssid, const char* password);
-extern bool isAPMode; // Добавьте эту строку
+extern bool isAPMode;
 extern const char* FIRMWARE_VERSION;
+
+// Определение enum для неблокирующего Wi-Fi
+enum WiFiConnectionState {
+  WIFI_INIT,            // Начальное состояние
+  WIFI_CONNECTING_STA,  // Попытка подключения к STA
+  WIFI_CONNECTED_STA,   // Подключено к STA
+  WIFI_SETTING_UP_AP,   // Настройка точки доступа
+  WIFI_AP_ACTIVE,       // Точка доступа активна
+  WIFI_CONNECT_FAILED   // Не удалось подключиться к STA
+};
+
+// Объявления для неблокирующего Wi-Fi из wifi.ino
+extern WiFiConnectionState currentWiFiState; // Только объявление переменной
+extern unsigned long lastWiFiStateChange;
 
 
 // Переопределение sendCurrentSettings, чтобы она вызывала версию из wifi.ino
@@ -581,24 +595,11 @@ void processSerialCommands() {
         // Сохраняем новые credentials
         saveWiFiSettings(ssid, password);
         
-        // Пытаемся подключиться
+        // Инициируем неблокирующее подключение
         WiFi.begin(ssid, password ? password : "");
-        
-        unsigned long start = millis();
-        while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) {
-          delay(500);
-          Serial.print(".");
-        }
-        
-        if (WiFi.status() == WL_CONNECTED) {
-          Serial.println("\nDEBUG: Successfully connected to WiFi!");
-          isAPMode = false;
-        } else {
-          Serial.println("\nDEBUG: Failed to connect to WiFi!");
-        }
-        
-        // Отправляем обновленный статус
-        sendWiFiStatus();
+        currentWiFiState = WIFI_CONNECTING_STA;
+        lastWiFiStateChange = millis();
+        Serial.print("DEBUG: Initiating non-blocking WiFi connection...");
       }
     }
 
