@@ -1480,8 +1480,13 @@ void setup_wifi_station() {
   
   initWiFiEEPROM(); // Инициализируем EEPROM для WiFi настроек
   
-  // Инициируем попытку подключения к сохраненной сети
-  startConnectToSavedWiFi();
+  if (!storedWiFi.valid) {
+    Serial.println("DEBUG: No valid WiFi settings found. Starting AP mode directly.");
+    startAPMode(); // Если нет сохраненных настроек, сразу запускаем AP
+  } else {
+    // Инициируем попытку подключения к сохраненной сети
+    startConnectToSavedWiFi();
+  }
   
   // Инициализация mDNS (работает в обоих режимах)
   if (MDNS.begin(mdns_hostname)) {

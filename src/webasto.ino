@@ -236,8 +236,8 @@ void webasto() {
                 target_fuel = 1.91;
               }
 
-              // Увеличиваем вентилятор на 3% от текущего значения
-              float fan_increment = fan_speed * 0.03;
+              // Увеличиваем вентилятор на 2% от текущего значения
+              float fan_increment = fan_speed * 0.02;
               float old_fan_speed = fan_speed;
               fan_speed += fan_increment;
 

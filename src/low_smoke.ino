@@ -425,7 +425,7 @@ void resetToDefaultSettings() {
   settings.heater_min = 190;
   settings.heater_overheat = 210;
   settings.heater_warning = 200;
-  settings.max_pwm_fan = 140;
+  settings.max_pwm_fan = 150;
   settings.glow_brightness = 90UL; // Использование UL для unsigned long
   settings.glow_fade_in_duration = 10000UL; // Использование UL для unsigned long
   settings.glow_fade_out_duration = 5000UL; // Использование UL для unsigned long
