@@ -73,7 +73,7 @@ jobs:
           - Обновлена версия прошивки до ${{ env.TAG_NAME }}
         files: |
           .pio/build/nodemcuv2/firmware.bin
-          webasto_monitor/dist/webasto.exe
+          /home/runner/work/esp8266_Webasto/esp8266_Webasto/webasto_monitor/dist/webasto.exe
         draft: false
         prerelease: false
       env:
