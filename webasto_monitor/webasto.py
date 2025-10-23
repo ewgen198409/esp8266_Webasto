@@ -104,7 +104,7 @@ class WebastoMonitorApp:
 
     def load_ds_digi_font(self):
         try:
-            font_path = os.path.join(os.path.dirname(__file__), "DS-DIGI.TTF")
+            font_path = os.path.join(os.path.dirname(__file__), "DS-DIGI.ttf")
             if os.path.exists(font_path):
                 return font.Font(family="DS-Digital", size=14, file=font_path)
             else:
