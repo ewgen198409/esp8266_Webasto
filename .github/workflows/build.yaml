@@ -10,7 +10,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     permissions:
       contents: write
 
@@ -31,6 +31,7 @@ jobs:
         pip install platformio
 
     - name: Update firmware version in code
+      shell: bash
       run: |
         VERSION="${{ inputs.version }}"
         sed -i 's/const char\* FIRMWARE_VERSION = ".*";/const char* FIRMWARE_VERSION = "'"$VERSION"'";/' src/wifi.ino
@@ -45,12 +46,14 @@ jobs:
       run: pip install pyinstaller
 
     - name: Build Webasto Monitor Executable
+      shell: bash
       run: |
         cd webasto_monitor
         rm -f dist/webasto.exe
         pyinstaller --onefile --windowed --icon=webasto_256x256.ico webasto.py
 
     - name: Create tag
+      shell: bash
       run: |
         VERSION="${{ inputs.version }}"
         TAG_NAME="v$VERSION"
@@ -73,7 +76,7 @@ jobs:
           - Обновлена версия прошивки до ${{ env.TAG_NAME }}
         files: |
           .pio/build/nodemcuv2/firmware.bin
-          /home/runner/work/esp8266_Webasto/esp8266_Webasto/webasto_monitor/dist/webasto.exe
+          webasto_monitor/dist/webasto.exe
         draft: false
         prerelease: false
       env:
