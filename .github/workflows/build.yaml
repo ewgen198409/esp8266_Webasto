@@ -41,13 +41,13 @@ jobs:
 
 
 
-    - name: Install PyInstaller
-      run: pip install pyinstaller
+    # - name: Install PyInstaller
+    #   run: pip install pyinstaller
 
-    - name: Build Webasto Monitor Executable
-      run: |
-        cd webasto_monitor
-        pyinstaller --onefile --windowed --icon=webasto_256x256.ico webasto.py
+    # - name: Build Webasto Monitor Executable
+    #   run: |
+    #     cd webasto_monitor
+    #     pyinstaller --onefile --windowed --icon=webasto_256x256.ico webasto.py
 
     - name: Create tag
       run: |
