@@ -10,6 +10,12 @@ import time
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
+import requests # Добавляем импорт для HTTP-запросов
+import json # Добавляем импорт для работы с JSON
+from urllib.parse import urlparse # Для парсинга URL
+
+# OTA buffer size constant (must match the one in firmware)
+OTA_BUFFER_SIZE = 512
 
 class WebastoMonitorApp:
     def __init__(self, root):
@@ -78,13 +84,20 @@ class WebastoMonitorApp:
             'fs_free': tk.StringVar(value="N/A"),
             'mac_address': tk.StringVar(value="N/A")
         }
+
+        # Переменные для обновлений прошивки
+        self.update_status_var = tk.StringVar(value="")
+        self.latest_version_var = tk.StringVar(value="")
         
         # Флаг для остановки потока чтения
         self.stop_event = Event()
         self.serial_queue = queue.Queue()
+        self.ota_response_queue = queue.Queue() # Очередь для ответов OTA
 
         # Время последнего запроса информации об устройстве
         self.last_device_info_request = 0
+        
+        self.ota_upload_in_progress = False # Флаг для отслеживания процесса загрузки OTA
 
         # Инициализация GUI
         self.setup_ui()
@@ -417,14 +430,14 @@ class WebastoMonitorApp:
     def open_settings_window(self):
         self.settings_window = tk.Toplevel(self.root)
         self.settings_window.title("Settings")
-        self.settings_window.geometry("400x400")  # Увеличили высоту для новых настроек
+        self.settings_window.geometry("400x570")  # Увеличили высоту для нового раздела обновления прошивки
 
         # Запрещаем изменение размера окна настроек
         self.settings_window.resizable(False, False)
         
         # Фрейм для параметров настроек
         settings_frame = ttk.LabelFrame(self.settings_window, text="Configuration Parameters")
-        settings_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        settings_frame.pack(fill=tk.X, padx=10, pady=10) # Изменили expand на False, чтобы не занимал все доступное пространство
         
         # Создаем элементы управления для каждого параметра с подсказками
         self.settings_entries = {}
@@ -463,19 +476,19 @@ class WebastoMonitorApp:
         # Фрейм для предупреждения
         warning_frame = ttk.Frame(self.settings_window)
         warning_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
-        
+
         warning_label = ttk.Label(
-            warning_frame, 
-            text="Остальные настройки лучше править в коде, сильно зависят друг от друга!!! Считывать и применять настройки когда нагреватель OFF", 
+            warning_frame,
+            text="Остальные настройки лучше править в коде, сильно зависят друг от друга!!! Считывать и применять настройки когда нагреватель OFF",
             foreground="red",
             wraplength=380,
             justify=tk.CENTER
         )
         warning_label.pack(fill=tk.X)
-        
+
         # Кнопки управления
         buttons_frame = ttk.Frame(self.settings_window)
-        buttons_frame.pack(fill=tk.X, padx=10, pady=10)
+        buttons_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
 
         ttk.Button(
             buttons_frame,
@@ -487,19 +500,73 @@ class WebastoMonitorApp:
             buttons_frame,
             text="Save Settings",
             command=self.save_settings
-        ).pack(side=tk.RIGHT, padx=5)
+        ).pack(side=tk.LEFT, padx=5)
 
         ttk.Button(
             buttons_frame,
             text="Reset Settings",
             command=self.reset_settings
-        ).pack(side=tk.RIGHT, padx=5)
+        ).pack(side=tk.LEFT, padx=5)
 
-        ttk.Button(
-            buttons_frame,
-            text="Cancel",
-            command=self.settings_window.destroy
-        ).pack(side=tk.RIGHT, padx=5)
+        # Новый фрейм для обновления прошивки
+        firmware_update_frame = ttk.LabelFrame(self.settings_window, text="Firmware Update")
+        firmware_update_frame.pack(fill=tk.BOTH, padx=10, pady=10, expand=True)
+
+        # Конфигурация колонок для равномерного распределения
+        firmware_update_frame.columnconfigure(1, weight=1)
+
+        # Ряд 0: Current Firmware Version
+        ttk.Label(firmware_update_frame, text="Current Firmware Version:").grid(row=0, column=0, padx=5, pady=2, sticky="w")
+        ttk.Label(firmware_update_frame, textvariable=self.device_info_vars['firmware_version'],
+                  background="white", relief="sunken").grid(row=0, column=1, padx=5, pady=2, sticky="ew")
+
+        # Ряд 1: Latest Version
+        ttk.Label(firmware_update_frame, text="Latest Version:").grid(row=1, column=0, padx=5, pady=2, sticky="w")
+        ttk.Label(firmware_update_frame, textvariable=self.latest_version_var,
+                  background="white", relief="sunken").grid(row=1, column=1, padx=5, pady=2, sticky="ew")
+
+        # Ряд 2: обновление статуса
+        ttk.Label(firmware_update_frame, text="Update Status:").grid(row=2, column=0, columnspan=1, padx=5, pady=2, sticky="w")
+        ttk.Label(firmware_update_frame, textvariable=self.update_status_var,
+                  background="white", relief="sunken").grid(row=2, column=1, columnspan=1, padx=5, pady=2, sticky="ew")
+
+        # Ряд 3: кнопки
+        self.check_update_button = ttk.Button(
+            firmware_update_frame,
+            text="Check",
+            command=self.check_for_firmware_update
+        )
+        self.check_update_button.grid(row=3, column=0, padx=5, pady=5, sticky="ew")
+
+        self.download_update_button = ttk.Button(
+            firmware_update_frame,
+            text="Download & Update",
+            command=self.download_and_update_firmware,
+            state='disabled'
+        )
+        self.download_update_button.grid(row=3, column=1, padx=5, pady=5, sticky="ew")
+
+        # Ряд 4: прогресс
+        self.progress_frame = ttk.Frame(firmware_update_frame)
+        self.progress_frame.grid(row=4, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+        self.update_progress = ttk.Progressbar(self.progress_frame, orient="horizontal", mode="determinate")
+        self.update_progress.pack(fill=tk.X, expand=True, pady=(0, 2))
+        # Заменяем Label на Text для прокрутки текста с горизонтальным скроллбаром
+        self.progress_scroll = tk.Scrollbar(self.progress_frame, orient=tk.HORIZONTAL)
+        self.progress_text = tk.Text(self.progress_frame, height=1, bg="lightblue", fg="black", wrap="none", font=("Arial", 10),
+                                     xscrollcommand=self.progress_scroll.set)
+        self.progress_scroll.config(command=self.progress_text.xview)
+        self.progress_scroll.pack(side=tk.BOTTOM, fill=tk.X)
+        self.progress_text.pack(fill=tk.X, expand=True)
+        self.progress_text.insert(1.0, "0%")  # Начальный текст
+        self.progress_text.config(state="disabled")  # Изначально только для чтения
+
+    def set_progress_text(self, text):
+        """Устанавливает текст в progress_text с включением редактирования."""
+        self.progress_text.config(state="normal")
+        self.progress_text.delete(1.0, tk.END)
+        self.progress_text.insert(1.0, text)
+        self.progress_text.config(state="disabled")
 
     def create_tooltip(self, widget, text):
         """Создает всплывающую подсказку для виджета"""
@@ -592,6 +659,13 @@ class WebastoMonitorApp:
             while not self.serial_queue.empty():
                 line = self.serial_queue.get_nowait()
 
+                if self.ota_upload_in_progress or (not self.ota_upload_in_progress and line.startswith("OTA_")):
+                    # Если загрузка OTA в процессе, или ранее была OTA, все OTA строки идут в очередь
+                    self.ota_response_queue.put(line)
+                    # Не обрабатываем другие команды для OTA сообщений
+                    continue
+
+                # Существующая логика парсинга для не-OTA команд
                 if line.startswith("WIFI_STATUS:"):
                     self.parse_wifi_status(line[12:])
                 elif line.startswith("WIFI_SCAN_START"):
@@ -625,7 +699,7 @@ class WebastoMonitorApp:
         current_time = time.time()
         if current_time - self.last_device_info_request > 5:  # каждые 5 секунд
             any_na = any(var.get() == "N/A" for var in self.device_info_vars.values())
-            if any_na:
+            if any_na and not self.ota_upload_in_progress: # Не запрашиваем во время OTA
                 self.request_device_info()
 
         if not self.stop_event.is_set():
@@ -1184,7 +1258,262 @@ class WebastoMonitorApp:
             self.wifi_ssid_entry.insert(0, ssid)
             self.wifi_password_entry.focus()
             
+    def check_for_firmware_update(self):
+        """Проверяет наличие новой версии прошивки на GitHub."""
+        self.log_message("Checking for firmware updates...")
+        self.check_update_button.config(state='disabled')
+        self.download_update_button.config(state='disabled')
+        self.update_progress['value'] = 0
+        self.set_progress_text("0%")
+
+        # Запускаем проверку в отдельном потоке, чтобы не блокировать GUI
+        Thread(target=self._perform_firmware_check, daemon=True).start()
+
+    def _perform_firmware_check(self):
+        try:
+            response = requests.get("https://api.github.com/repos/ewgen198409/esp8266_Webasto/releases/latest")
+            response.raise_for_status()  # Вызывает исключение для плохих статусов HTTP (4xx или 5xx)
+            latest_release = response.json()
             
+            latest_version = latest_release['tag_name']
+            
+            # Ищем .bin файл в активах релиза
+            download_url = None
+            for asset in latest_release['assets']:
+                if asset['name'].endswith('.bin'):
+                    download_url = asset['browser_download_url']
+                    break
+
+            if not download_url:
+                self.log_message("No .bin file found in the latest release assets.")
+                self.root.after(0, lambda: self.update_status_var.set("No .bin file found"))
+                self.root.after(0, lambda: self.latest_version_var.set(latest_version))
+                self.root.after(0, lambda: self.check_update_button.config(state='normal'))
+                return
+
+            current_version = self.device_info_vars['firmware_version'].get()
+
+            self.log_message(f"Latest version: {latest_version}, Current version: {current_version}")
+
+            if current_version != "N/A" and self._compare_versions(latest_version, current_version) > 0:
+                self.latest_firmware_url = download_url
+                self.log_message(f"New firmware version available: {latest_version}")
+                self.root.after(0, lambda: self.update_status_var.set("New version available!"))
+                self.root.after(0, lambda: self.latest_version_var.set(latest_version))
+                self.root.after(0, lambda: self.download_update_button.config(state='normal'))
+            else:
+                self.log_message("No new firmware updates available.")
+                self.root.after(0, lambda: self.update_status_var.set("No new updates available"))
+                self.root.after(0, lambda: self.latest_version_var.set(latest_version))
+                self.root.after(0, lambda: self.set_progress_text("Версия прошивки находится в актуальном состоянии"))
+
+        except requests.exceptions.RequestException as e:
+            self.log_message(f"Error checking for firmware updates: {e}")
+            self.root.after(0, lambda: self.update_status_var.set("Error checking updates"))
+            self.root.after(0, lambda: self.latest_version_var.set("N/A"))
+        except json.JSONDecodeError as e:
+            self.log_message(f"Error parsing GitHub API response: {e}")
+            self.root.after(0, lambda: self.update_status_var.set("Error parsing response"))
+            self.root.after(0, lambda: self.latest_version_var.set("N/A"))
+        finally:
+            self.root.after(0, lambda: self.check_update_button.config(state='normal'))
+
+    def _compare_versions(self, v1, v2):
+        """Сравнивает две версии в формате 'vX.Y.Z'."""
+        # Удаляем префикс 'v' и разбиваем по точкам
+        v1_parts = [int(p) for p in v1.lstrip('v').split('.')]
+        v2_parts = [int(p) for p in v2.lstrip('v').split('.')]
+        
+        # Дополняем более короткую версию нулями, чтобы они были одинаковой длины
+        max_len = max(len(v1_parts), len(v2_parts))
+        v1_parts += [0] * (max_len - len(v1_parts))
+        v2_parts += [0] * (max_len - len(v2_parts))
+
+        for i in range(max_len):
+            if v1_parts[i] > v2_parts[i]:
+                return 1
+            if v1_parts[i] < v2_parts[i]:
+                return -1
+        return 0 # Версии равны
+
+    def download_and_update_firmware(self):
+        """Загружает и устанавливает новую прошивку."""
+        if not hasattr(self, 'latest_firmware_url') or not self.latest_firmware_url:
+            messagebox.showerror("Error", "No firmware update URL available.")
+            return
+        
+        if not hasattr(self, 'ser') or not self.ser.is_open:
+            messagebox.showerror("Error", "Not connected to device! Please connect to COM port first.")
+            return
+
+        self.log_message(f"Downloading firmware from: {self.latest_firmware_url}")
+        self.download_update_button.config(state='disabled')
+        self.check_update_button.config(state='disabled')
+        self.update_progress['value'] = 0
+        self.update_progress['maximum'] = 100 # Устанавливаем максимум для прогресс-бара
+
+        # Запускаем загрузку и обновление в отдельном потоке
+        Thread(target=self._perform_firmware_update, daemon=True).start()
+
+    def _perform_firmware_update(self):
+        firmware_path = None
+        try:
+            # 1. Загрузка файла прошивки
+            response = requests.get(self.latest_firmware_url, stream=True)
+            response.raise_for_status()
+
+            total_size = int(response.headers.get('content-length', 0))
+            block_size = 1024 # 1 KB
+            downloaded_size = 0
+
+            firmware_path = os.path.join(os.path.dirname(__file__), "firmware.bin")
+            with open(firmware_path, 'wb') as f:
+                for data in response.iter_content(block_size):
+                    f.write(data)
+                    downloaded_size += len(data)
+                    progress = (downloaded_size / total_size) * 50 # Первые 50% на загрузку
+                    self.root.after(0, lambda p=progress: (
+                        self.update_progress.config(value=p),
+                        self.set_progress_text(f"{p:.1f}%")
+                    )[0])
+
+            self.log_message("Firmware downloaded successfully.")
+            self.root.after(0, lambda: (
+                self.update_progress.config(value=50),
+                self.set_progress_text("50.0%")
+            )[0]) # Загрузка завершена
+
+            # 2. Отправка команды START_OTA на устройство
+            self.ota_upload_in_progress = True # Устанавливаем флаг для перенаправления ответов перед OTA командами
+            self.ser.write(b'START_OTA\n')
+            self.log_message("Sent START_OTA command.")
+
+            # Ждем ответа OTA_READY
+            response_line = self._wait_for_ota_response("OTA_READY", timeout=10)
+            if response_line != "OTA_READY":
+                raise Exception(f"Device did not respond with OTA_READY. Got: {response_line}")
+            self.log_message("Device is ready for OTA upload.")
+
+            # 3. Отправка файла прошивки по частям
+            
+            with open(firmware_path, 'rb') as f:
+                bytes_sent = 0
+                while True:
+                    chunk = f.read(OTA_BUFFER_SIZE) # Читаем по 512 байт
+                    if not chunk:
+                        break
+
+                    self.ser.write(chunk)
+
+                    # Ждем подтверждения приема чанка для синхронизации
+                    response = self._wait_for_ota_response("OTA_CHUNK_ACK", timeout=5)
+                    if response != "OTA_CHUNK_ACK":
+                        raise Exception(f"Device did not acknowledge chunk. Got: {response}")
+
+                    bytes_sent += len(chunk)
+
+                    # Обновляем прогресс-бар (50% - 100% для загрузки на устройство)
+                    progress = 50 + (bytes_sent / total_size) * 50
+                    self.root.after(0, lambda p=progress: (
+                        self.update_progress.config(value=p),
+                        self.set_progress_text(f"{p:.1f}%")
+                    )[0])
+
+            # 4. Отправка команды END_OTA
+            self.ser.write(b'END_OTA\n')
+            self.log_message("Sent END_OTA command.")
+            
+            # Ждем ответа OTA_RECEIVE_COMPLETE
+            response_line = self._wait_for_ota_response("OTA_RECEIVE_COMPLETE", timeout=30)
+            if not response_line.startswith("OTA_RECEIVE_COMPLETE:"):
+                raise Exception(f"Device did not confirm OTA_RECEIVE_COMPLETE. Got: {response_line}")
+            self.log_message(f"Device confirmed firmware reception: {response_line}")
+
+            # После получения подтверждения, разрешаем устройству принимать текстовые команды
+            self.ota_upload_in_progress = False
+
+            # Ждем ответа OTA_READY_TO_APPLY
+            response_line = self._wait_for_ota_response("OTA_READY_TO_APPLY", timeout=10)
+            if response_line != "OTA_READY_TO_APPLY":
+                raise Exception(f"Device not ready to apply OTA. Got: {response_line}")
+            self.log_message("Device is ready to apply firmware.")
+
+            # 5. Отправка команды APPLY_OTA
+            self.ser.write(b'APPLY_OTA\n')
+            self.log_message("Sent APPLY_OTA command.")
+
+            # Ждем ответа OTA_APPLYING
+            response_line = self._wait_for_ota_response("OTA_APPLYING", timeout=10)
+            if response_line != "OTA_APPLYING":
+                raise Exception(f"Device did not confirm OTA_APPLYING. Got: {response_line}")
+            self.log_message("Device is applying firmware.")
+            
+            # Ждем ответа OTA_REBOOTING
+            response_line = self._wait_for_ota_response("OTA_REBOOTING", timeout=10)
+            if response_line != "OTA_REBOOTING":
+                raise Exception(f"Device did not confirm OTA_REBOOTING. Got: {response_line}")
+            self.log_message("Device is rebooting.")
+
+            self.log_message("Firmware update complete! Device will reboot.")
+            self.set_progress_text("Процесс обновления завершён. Ожидание перезагрузки устройства...")
+
+            # После обновления, запросим информацию об устройстве снова через большее время
+            self.root.after(15000, self._request_firmware_version_after_update) # Даем 15 секунд на перезагрузку и инициализацию
+            
+        except requests.exceptions.RequestException as e:
+            self.log_message(f"Error during firmware download: {e}")
+            messagebox.showerror("Error", f"Failed to download firmware: {e}")
+        except Exception as e:
+            self.log_message(f"Error during firmware update: {e}")
+            messagebox.showerror("Error", f"An error occurred during firmware update: {e}")
+        finally:
+            self.ota_upload_in_progress = False # Снимаем флаг
+            self.root.after(0, lambda: self.download_update_button.config(state='normal'))
+            self.root.after(0, lambda: self.check_update_button.config(state='normal'))
+            self.root.after(0, lambda: (
+                self.update_progress.config(value=0),
+                self.set_progress_text("0.0%")
+            )[0])
+            # Удаляем временный файл прошивки
+            if firmware_path and os.path.exists(firmware_path):
+                os.remove(firmware_path)
+                self.log_message(f"Removed temporary firmware file: {firmware_path}")
+
+    def _wait_for_ota_response(self, expected_prefix, timeout=10):
+        """Ждет ответа от устройства в течение заданного таймаута."""
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            try:
+                line = self.ota_response_queue.get(timeout=0.1) # Неблокирующее чтение
+                self.log_message(f"OTA Response: {line}")
+                if line.startswith(expected_prefix):
+                    return line
+                elif line.startswith("OTA_ERROR") or line.startswith("OTA_FAIL"):
+                    raise Exception(f"Device reported OTA error: {line}")
+            except queue.Empty:
+                pass
+        raise Exception(f"Timeout waiting for OTA response: {expected_prefix}")
+
+    def _request_firmware_version_after_update(self):
+        """Запрос только версии прошивки после обновления."""
+        if hasattr(self, 'ser') and self.ser.is_open:
+            try:
+                self.ser.write(b'GET_FIRMWARE_VERSION\n')
+                self.log_message("Requested firmware version after update")
+            except Exception as e:
+                self.log_message(f"Error requesting firmware version: {str(e)}")
+
+    def _is_valid_ip(self, ip_string):
+        """Проверяет, является ли строка действительным IP-адресом."""
+        pattern = r"^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$"
+        match = re.match(pattern, ip_string)
+        if not match:
+            return False
+        for part in match.groups():
+            if not (0 <= int(part) <= 255):
+                return False
+        return True
+
 if __name__ == "__main__":
     root = tk.Tk()
     app = WebastoMonitorApp(root)

@@ -7,11 +7,11 @@ extern float ds18b20_temp;
 extern bool isAPMode;
 extern const char* mdns_hostname;
 extern const char* FIRMWARE_VERSION;
+extern bool otaInProgress; // Добавляем extern для otaInProgress
 
 void logging(int ignit_fail, float temp_init, int seconds) {
-  if (settingsUpdateInProgress) {
-    return; // Пропускаем выполнение, если идёт обновление настроек
-    
+  if (settingsUpdateInProgress || otaInProgress) { // Добавляем проверку otaInProgress
+    return; // Пропускаем выполнение, если идёт обновление настроек или OTA
   }
   // Основные данные Webasto (первая строка)
   Serial.print(" | F: ");

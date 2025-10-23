@@ -62,7 +62,7 @@ class GyverNTC {
     }
 
     // прочитать усреднённую температуру с пина, можно указать к-во усреднений
-    float getTempAverage(uint8_t samples = 20) {
+    float getTempAverage(uint8_t samples = 10) {     // 20
         uint16_t aver = 0;
         for (uint8_t i = 0; i < samples; i++) aver += analogRead(_pin);
         return computeTemp((float)aver / samples, _res);
