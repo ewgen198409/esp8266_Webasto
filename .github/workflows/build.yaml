@@ -46,7 +46,7 @@ jobs:
     - name: Build Webasto Monitor Executable
       run: |
         cd webasto_monitor
-        pyinstaller --onefile --windowed --noupx --icon=webasto_256x256.ico webasto.py
+        pyinstaller --onefile --windowed --noupx --icon=webasto_256x256.ico --add-data "DS-DIGI.TTF;." webasto.py
 
     - name: Create tag
       shell: pwsh
