@@ -5,7 +5,7 @@ a = Analysis(
     ['webasto.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[('DS-DIGI.TTF', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

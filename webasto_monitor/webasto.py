@@ -6,6 +6,7 @@ from threading import Thread, Event
 import queue
 import re
 import os
+import sys
 import time
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -104,12 +105,24 @@ class WebastoMonitorApp:
 
     def load_ds_digi_font(self):
         try:
-            font_path = os.path.join(os.path.dirname(__file__), "DS-DIGI.ttf")
+            # Определяем базовый путь в зависимости от того, запущено ли приложение как .exe
+            if getattr(sys, 'frozen', False):
+                # Если приложение "заморожено" (скомпилировано в .exe)
+                base_path = sys._MEIPASS
+            else:
+                # Если запускается как обычный .py скрипт
+                base_path = os.path.dirname(__file__)
+
+            font_path = os.path.join(base_path, "DS-DIGI.TTF")
+
             if os.path.exists(font_path):
+                # Предполагаем, что tkinter сможет загрузить шрифт по этому пути
                 return font.Font(family="DS-Digital", size=14, file=font_path)
             else:
+                # Запасной шрифт, если DS-DIGI.TTF не найден
                 return font.Font(family="Courier", size=14, weight="bold")
-        except:
+        except Exception:
+            # Запасной шрифт в случае любой другой ошибки
             return font.Font(family="Courier", size=14, weight="bold")
 
     def setup_ui(self):
