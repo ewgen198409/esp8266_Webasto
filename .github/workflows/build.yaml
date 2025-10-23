@@ -47,6 +47,7 @@ jobs:
     - name: Build Webasto Monitor Executable
       run: |
         cd webasto_monitor
+        rm -f dist/webasto.exe
         pyinstaller --onefile --windowed --icon=webasto_256x256.ico webasto.py
 
     - name: Create tag
@@ -68,8 +69,6 @@ jobs:
         tag_name: ${{ env.TAG_NAME }}
         name: Release ${{ env.TAG_NAME }}
         body: |
-          Автоматический релиз firmware версии ${{ env.TAG_NAME }}.
-
           ## Изменения
           - Обновлена версия прошивки до ${{ env.TAG_NAME }}
         files: |
