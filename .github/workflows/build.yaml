@@ -39,16 +39,6 @@ jobs:
     - name: Build project
       run: pio run
 
-
-
-    # - name: Install PyInstaller
-    #   run: pip install pyinstaller
-
-    # - name: Build Webasto Monitor Executable
-    #   run: |
-    #     cd webasto_monitor
-    #     pyinstaller --onefile --windowed --icon=webasto_256x256.ico webasto.py
-
     - name: Create tag
       run: |
         VERSION="${{ inputs.version }}"
@@ -68,8 +58,6 @@ jobs:
         tag_name: ${{ env.TAG_NAME }}
         name: Release ${{ env.TAG_NAME }}
         body: |
-          Автоматический релиз firmware версии ${{ env.TAG_NAME }}.
-
           ## Изменения
           - Обновлена версия прошивки до ${{ env.TAG_NAME }}
         files: |
