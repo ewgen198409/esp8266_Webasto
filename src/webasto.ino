@@ -229,11 +229,11 @@ void webasto() {
               float target_fan_speed = final_fan_speed;
               float target_fuel = 0;
               if (currentState == 0) {                                              // HIGH
-                target_fuel = 2.38;
+                target_fuel = 2.50;
               } else if (currentState == 1) {                                       // MID
-                target_fuel = 2.20;
+                target_fuel = 2.30;
               } else if (currentState == 2) {                                       // LOW
-                target_fuel = 1.91;
+                target_fuel = 2.00;
               }
 
               // Увеличиваем вентилятор на 2% от текущего значения
@@ -271,11 +271,11 @@ void webasto() {
               float target_fan_speed = final_fan_speed;
               float target_fuel = 0;
               if (currentState == 0) {                                              // HIGH
-                target_fuel = 2.38;
+                target_fuel = 2.50;
               } else if (currentState == 1) {                                       // MID
-                target_fuel = 2.20;
+                target_fuel = 2.30;
               } else if (currentState == 2) {                                       // LOW
-                target_fuel = 1.91;
+                target_fuel = 2.00;
               }
 
               // Уменьшаем вентилятор на 5% от текущего значения
@@ -304,7 +304,7 @@ void webasto() {
               fan_timer = millis();
             }
 
-          } else if (exhaust_temp > 100) {    // когда температура достигла 100 градусов
+          } else if (exhaust_temp > 150) {    // когда температура достигла 100 градусов
               fan_speed = final_fan_speed;
               running_ratio(exhaust_temp);
           }

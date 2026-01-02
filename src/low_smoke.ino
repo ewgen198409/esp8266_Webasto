@@ -84,7 +84,7 @@ Settings settings;
 // Произвольное магическое число для проверки EEPROM (можно изменить)
 const unsigned long EEPROM_MAGIC_NUMBER = 0x12345679; // ИЗМЕНЕНО: Новое магическое число
 
-unsigned long glow_brightness_max = 90;   // максимальная яркость свечи
+unsigned long glow_brightness_max = 5;   // максимальная яркость свечи
 unsigned long glow_fade_in_duration_ms = 10000;
 unsigned long glow_fade_out_duration_ms = 5000;
 
@@ -102,9 +102,9 @@ bool stringComplete = false;
 // Используем D-пины, которые соответствуют GPIO на ESP8266
 int fuel_pump_pin = D5; // GPIO14
 int glow_plug_pin = D6; // GPIO12
-int burn_fan_pin = D7; // GPIO13
+int burn_fan_pin = D1; // GPIO13
 int exhaust_temp_pin = A0; // ADC0, единственный аналоговый вход на NodeMCU
-int push_pin = D1; // GPIO5
+int push_pin = D7; // GPIO5
 int pushup_pin = D2; // GPIO4
 int pushdown_pin = D3; // GPIO0
 
@@ -121,7 +121,7 @@ int prime_high_temp = 20; // Верхняя температура при пре
 float prime_high_temp_fuelrate = 2.0; // Расход топлива при высокой температуре
 
 // Начальная
-float start_fan_speed = 20; // Начальная скорость вентилятора
+float start_fan_speed = 15; // Начальная скорость вентилятора
 float start_fuel = 0.7; // Начальный расход топлива
 
 // Полная мощность
@@ -282,7 +282,7 @@ void setup() {
   pinMode(pushdown_pin, INPUT_PULLUP);   // Вход кнопки вниз с подтяжкой
 
   // Установка частоты ШИМ для ESP8266
-  analogWriteFreq(500); // Устанавливаем частоту ШИМ 500 Гц
+  analogWriteFreq(10000); // Устанавливаем частоту ШИМ 10 кГц
 
   // Инициализация EEPROM для ESP8266
   EEPROM.begin(1024); // Выделяем 1024 байта для всех настроек
@@ -452,7 +452,7 @@ void resetToDefaultSettings() {
   settings.heater_overheat = 210;
   settings.heater_warning = 200;
   settings.max_pwm_fan = 150;
-  settings.glow_brightness = 90UL; // Использование UL для unsigned long
+  settings.glow_brightness = 5UL; // Использование UL для unsigned long
   settings.glow_fade_in_duration = 10000UL; // Использование UL для unsigned long
   settings.glow_fade_out_duration = 5000UL; // Использование UL для unsigned long
 
