@@ -16,7 +16,7 @@ float get_wabasto_temp(int temp_pin, int exhaust) {
         ADC_BITS_RESOLUTION      // Разрешение АЦП
     );  // ⚡️ тут уже 6 аргументов, как нужно
 
-    float temperature_celsius = ntc.getTempAverage(20); // Используем усреднение библиотеки с 20 сэмплами
+    float temperature_celsius = ntc.getTempAverage(10); // Используем усреднение библиотеки с 10 сэмплами
 
     if (temperature_celsius == 250.0f || temperature_celsius == -127.0f) {
         return -999.0f;  // Ошибка

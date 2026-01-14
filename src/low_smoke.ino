@@ -84,7 +84,7 @@ Settings settings;
 // Произвольное магическое число для проверки EEPROM (можно изменить)
 const unsigned long EEPROM_MAGIC_NUMBER = 0x12345679; // ИЗМЕНЕНО: Новое магическое число
 
-unsigned long glow_brightness_max = 5;   // максимальная яркость свечи
+unsigned long glow_brightness_max = 20;   // максимальная яркость свечи
 unsigned long glow_fade_in_duration_ms = 10000;
 unsigned long glow_fade_out_duration_ms = 5000;
 
@@ -446,14 +446,14 @@ void resetToDefaultSettings() {
   }
 
   settings.magicNumber = EEPROM_MAGIC_NUMBER; // Устанавливаем магическое число
-  settings.pump_size = 25;
+  settings.pump_size = 26;
   settings.heater_target = 195;
   settings.heater_min = 190;
   settings.heater_overheat = 210;
   settings.heater_warning = 200;
-  settings.max_pwm_fan = 150;
-  settings.glow_brightness = 5UL; // Использование UL для unsigned long
-  settings.glow_fade_in_duration = 10000UL; // Использование UL для unsigned long
+  settings.max_pwm_fan = 80;
+  settings.glow_brightness = 20UL; // Использование UL для unsigned long
+  settings.glow_fade_in_duration = 5000UL; // Использование UL для unsigned long
   settings.glow_fade_out_duration = 5000UL; // Использование UL для unsigned long
 
   EEPROM.put(0, settings); // Записываем настройки в EEPROM
